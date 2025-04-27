@@ -49,8 +49,35 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+mongodb/
+*.mongodb
 
 # Distribution / packaging
 dist/
 build/
 *.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local development settings
+local_settings.py
+
+# Virtual environment
+.python-version
+
+# Chroma DB files (for embedding databases)
+.chroma/
+chroma_db/
+
+# Any secrets files
+secrets/
+*_key.json
+*_secret.json
+
+# Temp files
+.temp/
+tmp/
+
+# Generated files
+generated/

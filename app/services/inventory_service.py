@@ -26,7 +26,11 @@ class InventoryService:
         if category:
             query["category"] = category
         if low_stock:
-            query["stock_level"] = {"$lte": "$min_stock_level"}
+            # Fix: Use aggregation to compare stock_level with min_stock_level
+            inventory_items = list(inventory_collection.find({
+                "$expr": {"$lte": ["$stock_level", "$min_stock_level"]}
+            }).skip(skip).limit(limit))
+            return inventory_items
         
         # Execute query
         inventory_items = list(inventory_collection.find(query).skip(skip).limit(limit))
@@ -130,7 +134,7 @@ class InventoryService:
         new_stock = current_stock + quantity_change
         
         # Prevent negative stock
-        if new_stock < 0:
+        if (new_stock < 0):
             return {"error": f"Cannot reduce stock below zero. Current stock: {current_stock}"}
         
         # Update stock level

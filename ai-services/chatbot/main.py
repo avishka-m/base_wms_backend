@@ -1,6 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, Field
 from typing import Dict, Optional, Any
 from contextlib import asynccontextmanager
@@ -16,10 +15,6 @@ from agents.picker_agent import PickerAgent
 from agents.packer_agent_ex import PackerAgent
 from agents.driver_agent import DriverAgent
 from agents.manager_agent import ManagerAgent
-
-# Add backend path to import auth modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from app.auth.dependencies import get_current_user, get_current_active_user
 
 # Configure logging
 logging.basicConfig(
@@ -84,9 +79,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Initialize OAuth2 scheme with the same token URL as the main app
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
-
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -128,35 +120,8 @@ class HealthCheckResponse(BaseModel):
 # In production, this should be replaced with a database
 conversations = {}
 
-# Authentication helper function
-async def validate_user_role(current_user: Dict[str, Any], required_role: str) -> Dict[str, Any]:
-    """
-    Validate that the user has the required role.
-    
-    Args:
-        current_user: The authenticated user data
-        required_role: The role required for the operation
-        
-    Returns:
-        User data if validated, else raises 403
-    """
-    user_role = current_user.get("role", "").lower()
-    
-    # Manager role has access to all agents
-    if user_role == "manager":
-        return current_user
-        
-    # Check if user has the required role
-    if user_role != required_role.lower():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied. You need {required_role.capitalize()} role to use this agent."
-        )
-            
-    return current_user
-
 @app.get("/", response_model=HealthCheckResponse)
-async def root(current_user: Dict[str, Any] = Depends(get_current_active_user)):
+async def root():
     """Root endpoint - health check."""
     return {
         "status": "healthy",
@@ -165,16 +130,12 @@ async def root(current_user: Dict[str, Any] = Depends(get_current_active_user)):
     }
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(
-    message: ChatMessage, 
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-):
+async def chat(message: ChatMessage):
     """
     Chat with the WMS chatbot.
     
     Args:
         message: User message
-        current_user: Authenticated user information
         
     Returns:
         Chatbot response
@@ -188,15 +149,12 @@ async def chat(
             detail=f"Invalid role: {role}. Must be one of {list(agents.keys())}"
         )
     
-    # Validate user has permission for this role
-    await validate_user_role(current_user, role)
-    
     try:
         # Get the appropriate agent
         agent = agents[role]
         
         # Log the incoming message
-        logger.info(f"Received message from {role} (user: {current_user.get('username')}): {message.message[:100]}")
+        logger.info(f"Received message from {role}: {message.message[:100]}")
         
         # Process the message through the agent
         response_text = agent.run(message.message)
@@ -234,16 +192,12 @@ async def chat(
         )
 
 @app.get("/api/conversations/{conversation_id}", response_model=Dict[str, Any])
-async def get_conversation(
-    conversation_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-):
+async def get_conversation(conversation_id: str):
     """
     Get a conversation history.
     
     Args:
         conversation_id: ID of the conversation
-        current_user: Authenticated user information
         
     Returns:
         Conversation history
@@ -253,26 +207,6 @@ async def get_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Conversation not found: {conversation_id}"
         )
-    
-    # Ensure the user has access to this conversation
-    # Extract the role from conversation_id (format: role_timestamp)
-    try:
-        conversation_role = conversation_id.split("_")[0]
-        user_role = current_user.get("role", "").lower()
-        
-        # Only allow access if user role matches the conversation role or user is a manager
-        if user_role != conversation_role.lower() and user_role != "manager":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this conversation"
-            )
-    except Exception:
-        # If we can't determine the role from the ID, only allow managers
-        if current_user.get("role", "").lower() != "manager":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this conversation"
-            )
         
     return {
         "conversation_id": conversation_id,

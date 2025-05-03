@@ -200,9 +200,15 @@ class HealthCheckResponse(BaseModel):
     version: str = Field(..., description="Version of the API")
     timestamp: str = Field(..., description="Timestamp of the health check")
 
+class NewConversation(BaseModel):
+    """Create a new conversation"""
+    title: str = Field(..., description="Title of the conversation")
+    role: str = Field(..., description="Role to use for this conversation")
+
 # Simple in-memory conversation store
 # In production, this should be replaced with a database
-conversations = {}
+# conversations = {}  # Old implementation - shared for all users
+user_conversations = {}  # Store conversations by user ID
 
 @app.get("/", response_model=HealthCheckResponse)
 async def root():
@@ -211,6 +217,55 @@ async def root():
         "status": "healthy",
         "version": app.version,
         "timestamp": datetime.now().isoformat()
+    }
+
+@app.post("/api/conversations", response_model=Dict[str, Any])
+async def create_conversation(
+    data: NewConversation,
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Create a new conversation for the user.
+    
+    Args:
+        data: New conversation data
+        current_user: Current authenticated user
+        
+    Returns:
+        New conversation information
+    """
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
+    
+    # Validate role exists
+    if data.role.lower() not in agents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role: {data.role}. Must be one of {list(agents.keys())}"
+        )
+    
+    # Create conversation ID with timestamp to make it unique
+    conversation_id = f"{data.role.lower()}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    # Initialize user's conversations dictionary if it doesn't exist
+    if user_id not in user_conversations:
+        user_conversations[user_id] = {}
+    
+    # Store the new conversation with metadata
+    user_conversations[user_id][conversation_id] = {
+        "metadata": {
+            "title": data.title,
+            "created_at": datetime.now().isoformat(),
+            "role": data.role.lower(),
+        },
+        "messages": []
+    }
+    
+    return {
+        "conversation_id": conversation_id,
+        "title": data.title,
+        "role": data.role.lower(),
+        "created_at": datetime.now().isoformat()
     }
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -229,6 +284,9 @@ async def chat(
         Chatbot response
     """
     role = message.role.lower()
+    
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
     
     # Validate role exists
     if role not in agents:
@@ -258,20 +316,37 @@ async def chat(
         # Create or update conversation
         conversation_id = message.conversation_id or f"{role}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
-        if conversation_id not in conversations:
-            conversations[conversation_id] = []
+        # Initialize user's conversations dictionary if it doesn't exist
+        if user_id not in user_conversations:
+            user_conversations[user_id] = {}
+            
+        # Create conversation if it doesn't exist
+        if conversation_id not in user_conversations[user_id]:
+            user_conversations[user_id][conversation_id] = {
+                "metadata": {
+                    "title": f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    "created_at": datetime.now().isoformat(),
+                    "role": role,
+                },
+                "messages": []
+            }
             
         # Store the message and response
-        conversations[conversation_id].append({
-            "role": role,
-            "message": message.message,
-            "response": response_text,
+        user_conversations[user_id][conversation_id]["messages"].append({
+            "role": "user",
+            "content": message.message,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        user_conversations[user_id][conversation_id]["messages"].append({
+            "role": "assistant",
+            "content": response_text,
             "timestamp": datetime.now().isoformat()
         })
         
         # Trim conversation history if it gets too long
-        if len(conversations[conversation_id]) > 20:
-            conversations[conversation_id] = conversations[conversation_id][-20:]
+        if len(user_conversations[user_id][conversation_id]["messages"]) > 100:
+            user_conversations[user_id][conversation_id]["messages"] = user_conversations[user_id][conversation_id]["messages"][-100:]
         
         # Return the response
         return {
@@ -302,7 +377,11 @@ async def get_conversation(
     Returns:
         Conversation history
     """
-    if conversation_id not in conversations:
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
+    
+    # Check if user has this conversation
+    if user_id not in user_conversations or conversation_id not in user_conversations[user_id]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Conversation not found: {conversation_id}"
@@ -310,54 +389,107 @@ async def get_conversation(
         
     return {
         "conversation_id": conversation_id,
-        "messages": conversations[conversation_id]
+        "metadata": user_conversations[user_id][conversation_id]["metadata"],
+        "messages": user_conversations[user_id][conversation_id]["messages"]
+    }
+
+@app.put("/api/conversations/{conversation_id}", response_model=Dict[str, Any])
+async def update_conversation(
+    conversation_id: str,
+    data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Update conversation metadata (title)
+    
+    Args:
+        conversation_id: ID of the conversation
+        data: Updated conversation data
+        current_user: Current authenticated user
+        
+    Returns:
+        Updated conversation information
+    """
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
+    
+    # Check if user has this conversation
+    if user_id not in user_conversations or conversation_id not in user_conversations[user_id]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation not found: {conversation_id}"
+        )
+    
+    # Update title if provided
+    if "title" in data:
+        user_conversations[user_id][conversation_id]["metadata"]["title"] = data["title"]
+    
+    return {
+        "conversation_id": conversation_id,
+        "metadata": user_conversations[user_id][conversation_id]["metadata"],
+        "success": True
     }
 
 @app.get("/api/conversations", response_model=List[Dict[str, Any]])
-async def get_all_conversations(
-    current_user: Dict[str, Any] = Depends(optional_has_role(["Manager"]))
+async def get_user_conversations(
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
 ):
     """
-    Get all conversations (Manager only).
+    Get all conversations for the current user.
     
     Args:
-        current_user: Current authenticated user with Manager role
+        current_user: Current authenticated user
         
     Returns:
-        List of all conversations
+        List of all user conversations
     """
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
+    
+    # Return empty list if user has no conversations
+    if user_id not in user_conversations:
+        return []
+    
+    # Return conversations with metadata
     return [
         {
             "conversation_id": conv_id,
-            "message_count": len(messages),
-            "last_updated": messages[-1]["timestamp"] if messages else None,
-            "role": conv_id.split("_")[0] if "_" in conv_id else "unknown"
+            "title": data["metadata"].get("title", f"Chat {conv_id}"),
+            "role": data["metadata"].get("role", "unknown"),
+            "created_at": data["metadata"].get("created_at", ""),
+            "message_count": len(data["messages"]),
+            "last_updated": data["messages"][-1]["timestamp"] if data["messages"] else data["metadata"].get("created_at", "")
         }
-        for conv_id, messages in conversations.items()
+        for conv_id, data in user_conversations[user_id].items()
     ]
 
 @app.delete("/api/conversations/{conversation_id}", response_model=Dict[str, Any])
 async def delete_conversation(
     conversation_id: str,
-    current_user: Dict[str, Any] = Depends(optional_has_role(["Manager"]))
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
 ):
     """
-    Delete a conversation (Manager only).
+    Delete a user conversation.
     
     Args:
         conversation_id: ID of the conversation
-        current_user: Current authenticated user with Manager role
+        current_user: Current authenticated user
         
     Returns:
         Success message
     """
-    if conversation_id not in conversations:
+    # Get user ID for storage
+    user_id = current_user.get("username", "anonymous")
+    
+    # Check if user has this conversation
+    if user_id not in user_conversations or conversation_id not in user_conversations[user_id]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Conversation not found: {conversation_id}"
         )
         
-    del conversations[conversation_id]
+    # Delete the conversation
+    del user_conversations[user_id][conversation_id]
     
     return {
         "success": True,

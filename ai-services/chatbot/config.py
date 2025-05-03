@@ -17,9 +17,7 @@ MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 
 # WMS API configuration
-WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8000/api/v1")
-WMS_API_USERNAME = os.getenv("WMS_API_USERNAME", "manager")
-WMS_API_PASSWORD = os.getenv("WMS_API_PASSWORD", "manager123")
+WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 
 # Vector DB configuration
 CHROMA_PERSIST_DIRECTORY = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
@@ -29,16 +27,10 @@ CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "wms_knowledge")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
-# Authentication configuration
-AUTH_TOKEN_URL = f"{WMS_API_BASE_URL}/auth/token"
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-remember-to-change-this-in-production")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-
 # Role definitions and permissions
 ROLES = {
     "clerk": {
         "description": "Receiving Clerk: Adds items from pre-approved list and handles returns",
-        # "allowed_tools": ["inventory_query", "inventory_add", "process_return", "check_supplier", "locate_item"],
         "allowed_tools": ["inventory_add"],
         "system_instructions": "You are a helpful warehouse receiving clerk assistant. You can help with receiving new inventory, processing returns, and checking inventory levels. Always verify item details before adding to inventory.",
     },
@@ -91,6 +83,5 @@ API_ENDPOINTS = {
     "receiving": f"{WMS_API_BASE_URL}/receiving",
     "returns": f"{WMS_API_BASE_URL}/returns",
     "vehicles": f"{WMS_API_BASE_URL}/vehicles",
-    "customers": f"{WMS_API_BASE_URL}/customers",
-    "auth": f"{WMS_API_BASE_URL}/auth/token"
+    "customers": f"{WMS_API_BASE_URL}/customers"
 }

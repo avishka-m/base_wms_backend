@@ -19,7 +19,7 @@ from agents.manager_agent import ManagerAgent
 
 # Add backend path to import auth modules
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from app.auth.dependencies import get_current_user, get_current_active_user
+from app.auth.dependencies import get_current_user, get_current_active_user, oauth2_scheme
 
 # Configure logging
 logging.basicConfig(
@@ -83,9 +83,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
-# Initialize OAuth2 scheme with the same token URL as the main app
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
 
 # Add CORS middleware
 app.add_middleware(

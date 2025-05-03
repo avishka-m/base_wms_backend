@@ -1,8 +1,14 @@
 import requests
 from typing import Dict, Any, List, Optional
 import json
+import os
+import sys
 
-# Use absolute import instead of relative import
+# Add backend path to import modules and config
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+from app.config import API_V1_PREFIX, SECRET_KEY
+
+# Use absolute import for chatbot config
 from config import (
     WMS_API_BASE_URL,
     WMS_API_USERNAME,
@@ -29,7 +35,7 @@ class APIClient:
         Returns:
             Boolean indicating if authentication was successful
         """
-        auth_url = self.endpoints["auth"]
+        auth_url = f"{self.base_url}/auth/token"  # Use consistent URL format
         
         try:
             response = requests.post(

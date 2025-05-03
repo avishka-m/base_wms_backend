@@ -4,10 +4,6 @@ from dotenv import load_dotenv
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
-import jwt
-from fastapi import HTTPException, status
-from app.auth.utils import verify_password, get_password_hash
-from app.config import settings
 
 load_dotenv()
 
@@ -15,69 +11,48 @@ MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 client = AsyncIOMotorClient(MONGO_URL)
 db = client["warehouse_management"]
 
-# User session store
-active_sessions = {}
+# Simple in-memory conversation store
+conversations = {}
 
-async def validate_token(token: str) -> Dict[str, Any]:
+async def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     """
-    Validate JWT token and return user data.
+    Get conversation data.
     
     Args:
-        token: JWT token to validate
+        conversation_id: ID of the conversation to retrieve
         
     Returns:
-        Dict containing user data if valid
+        Conversation data if exists, else None
     """
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return payload
-    except jwt.JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    return conversations.get(conversation_id)
 
-async def get_user_session(username: str) -> Optional[Dict[str, Any]]:
+async def save_conversation(conversation_id: str, data: Dict[str, Any]) -> None:
     """
-    Get user session data.
+    Save conversation data.
     
     Args:
-        username: Username to get session for
-        
-    Returns:
-        Session data if exists, else None
+        conversation_id: ID of the conversation
+        data: Conversation data to save
     """
-    return active_sessions.get(username)
+    conversations[conversation_id] = {
+        **data,
+        "last_updated": datetime.now().isoformat()
+    }
 
-async def create_user_session(user_data: Dict[str, Any]) -> None:
+async def append_to_conversation(conversation_id: str, message: Dict[str, Any]) -> None:
     """
-    Create or update user session.
+    Append a message to an existing conversation.
     
     Args:
-        user_data: User data to store in session
+        conversation_id: ID of the conversation
+        message: Message to append
     """
-    username = user_data.get("username")
-    if username:
-        active_sessions[username] = {
-            "user_data": user_data,
-            "last_activity": datetime.now().isoformat(),
-            "conversation_history": []
+    if conversation_id not in conversations:
+        conversations[conversation_id] = {
+            "messages": [],
+            "created_at": datetime.now().isoformat(),
+            "last_updated": datetime.now().isoformat()
         }
-
-async def update_session_activity(username: str) -> None:
-    """
-    Update last activity timestamp for user session.
     
-    Args:
-        username: Username to update activity for
-    """
-    if username in active_sessions:
-        active_sessions[username]["last_activity"] = datetime.now().isoformat()
+    conversations[conversation_id]["messages"].append(message)
+    conversations[conversation_id]["last_updated"] = datetime.now().isoformat()

@@ -1,75 +1,32 @@
 import requests
 from typing import Dict, Any, List, Optional
-import json
-import os
-import sys
 
-# Add backend path to import modules and config
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
-from app.config import API_V1_PREFIX, SECRET_KEY
 
 # Use absolute import for chatbot config
 from config import (
     WMS_API_BASE_URL,
-    WMS_API_USERNAME,
-    WMS_API_PASSWORD,
     API_ENDPOINTS
 )
 
 class APIClient:
     """
     Client for interacting with the WMS API.
-    Handles authentication and provides methods for common API operations.
+    Provides methods for common API operations.
     """
     
     def __init__(self):
         """Initialize the API client."""
         self.base_url = WMS_API_BASE_URL
         self.endpoints = API_ENDPOINTS
-        self.token = None
-    
-    def authenticate(self) -> bool:
-        """
-        Authenticate with the WMS API and get a JWT token.
-        
-        Returns:
-            Boolean indicating if authentication was successful
-        """
-        auth_url = f"{self.base_url}/auth/token"  # Use consistent URL format
-        
-        try:
-            response = requests.post(
-                auth_url,
-                data={
-                    "username": WMS_API_USERNAME,
-                    "password": WMS_API_PASSWORD
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
-            )
-            
-            response.raise_for_status()
-            data = response.json()
-            self.token = data.get("access_token")
-            
-            return bool(self.token)
-        
-        except Exception as e:
-            print(f"Authentication error: {e}")
-            return False
     
     def get_headers(self) -> Dict[str, str]:
         """
-        Get headers with authentication token.
-        Authenticates if no token is available.
+        Get headers for API requests.
         
         Returns:
             Dictionary of headers
         """
-        if not self.token:
-            self.authenticate()
-        
         return {
-            "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
         }
     
@@ -98,14 +55,9 @@ class APIClient:
             
             response.raise_for_status()
             return response.json()
-        
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                # Token expired, try to re-authenticate
-                self.token = None
-                self.authenticate()
-                return self.get(endpoint, params)
-            raise
+        except Exception as e:
+            print(f"API error (GET): {e}")
+            return {"error": str(e)}
     
     def get_by_id(self, endpoint: str, item_id: int) -> Dict[str, Any]:
         """
@@ -131,14 +83,9 @@ class APIClient:
             
             response.raise_for_status()
             return response.json()
-        
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                # Token expired, try to re-authenticate
-                self.token = None
-                self.authenticate()
-                return self.get_by_id(endpoint, item_id)
-            raise
+        except Exception as e:
+            print(f"API error (GET by ID): {e}")
+            return {"error": str(e)}
     
     def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -165,14 +112,9 @@ class APIClient:
             
             response.raise_for_status()
             return response.json()
-        
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                # Token expired, try to re-authenticate
-                self.token = None
-                self.authenticate()
-                return self.post(endpoint, data)
-            raise
+        except Exception as e:
+            print(f"API error (POST): {e}")
+            return {"error": str(e)}
     
     def put(self, endpoint: str, item_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -200,14 +142,9 @@ class APIClient:
             
             response.raise_for_status()
             return response.json()
-        
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                # Token expired, try to re-authenticate
-                self.token = None
-                self.authenticate()
-                return self.put(endpoint, item_id, data)
-            raise
+        except Exception as e:
+            print(f"API error (PUT): {e}")
+            return {"error": str(e)}
     
     def delete(self, endpoint: str, item_id: int) -> Dict[str, Any]:
         """
@@ -233,14 +170,9 @@ class APIClient:
             
             response.raise_for_status()
             return response.json()
-        
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                # Token expired, try to re-authenticate
-                self.token = None
-                self.authenticate()
-                return self.delete(endpoint, item_id)
-            raise
+        except Exception as e:
+            print(f"API error (DELETE): {e}")
+            return {"error": str(e)}
     
     # Specialized methods for common operations
     

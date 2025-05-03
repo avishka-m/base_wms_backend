@@ -29,6 +29,11 @@ CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "wms_knowledge")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
+# Authentication configuration
+AUTH_TOKEN_URL = f"{WMS_API_BASE_URL}/auth/token"
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-remember-to-change-this-in-production")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
 # Role definitions and permissions
 ROLES = {
     "clerk": {

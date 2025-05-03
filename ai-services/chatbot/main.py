@@ -1,13 +1,28 @@
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Dict, Optional, Any
-from contextlib import asynccontextmanager
-import getpass
-import sys
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import sys
+from jose import JWTError
+import getpass
+from contextlib import asynccontextmanager
+from typing import Dict, Optional, Any, List
+
+from fastapi import FastAPI, HTTPException, status, Depends, Security, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel, Field
+
+# Add the parent directory to path to import from app modules
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+# Import auth modules from main app
+from app.auth.dependencies import get_current_user, get_current_active_user, has_role
+from app.config import SECRET_KEY  # Import SECRET_KEY for token validation
+
+# Import local configuration
+from config import DEV_MODE, DEV_USER_ROLE
 
 # Import agents
 from agents.clerk_agent import ClerkAgent
@@ -26,6 +41,75 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("wms_chatbot")
+
+# Set up OAuth2 scheme for token authentication
+# Point to the main application's token URL
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="http://localhost:8002/api/v1/auth/token", 
+    auto_error=False
+)
+
+# Create a development mock user for testing
+dev_mock_user = {
+    "username": "dev_user",
+    "role": DEV_USER_ROLE,
+    "email": "dev@example.com",
+    "full_name": "Development User",
+    "disabled": False
+}
+
+# Define an optional dependency for authentication that can be bypassed in dev mode
+async def get_optional_current_user(
+    dev_mode: bool = Query(False, description="Enable development mode (no auth)"),
+    token: str = Depends(oauth2_scheme)
+) -> Dict[str, Any]:
+    """
+    Get the current user with option to bypass in development mode.
+    
+    Args:
+        dev_mode: Flag to enable development mode
+        token: OAuth2 token
+        
+    Returns:
+        Current user information
+    """
+    # If DEV_MODE is enabled globally or dev_mode query param is True, return mock user
+    if DEV_MODE or dev_mode:
+        logger.warning("Using development mode: Authentication bypassed!")
+        return dev_mock_user
+        
+    # Otherwise use normal authentication
+    return await get_current_user(token)
+
+# Role-based access with development mode support
+def optional_has_role(required_roles: list):
+    """
+    Check if user has required role with option to bypass in development mode.
+    
+    Args:
+        required_roles: List of roles that are allowed
+        
+    Returns:
+        Dependency function that checks role
+    """
+    async def check_role(
+        dev_mode: bool = Query(False, description="Enable development mode (no auth)"),
+        current_user: Dict[str, Any] = Depends(get_optional_current_user)
+    ):
+        # In dev mode, always allow if using the default dev user
+        if (DEV_MODE or dev_mode) and current_user.get("username") == "dev_user":
+            logger.warning(f"Development mode: Role check for {required_roles} bypassed!")
+            return dev_mock_user
+            
+        # Otherwise check roles normally
+        if current_user.get("role") not in required_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User does not have sufficient privileges. Required roles: {required_roles}"
+            )
+        return current_user
+        
+    return check_role
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -130,12 +214,16 @@ async def root():
     }
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(message: ChatMessage):
+async def chat(
+    message: ChatMessage, 
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
     """
     Chat with the WMS chatbot.
     
     Args:
         message: User message
+        current_user: Current authenticated user or dev user in dev mode
         
     Returns:
         Chatbot response
@@ -147,6 +235,14 @@ async def chat(message: ChatMessage):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid role: {role}. Must be one of {list(agents.keys())}"
+        )
+    
+    # Validate user has access to this chatbot role
+    allowed_roles = get_allowed_chatbot_roles(current_user.get("role", ""))
+    if role not in allowed_roles and current_user.get("role") != "Manager":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User with role '{current_user.get('role')}' cannot access the '{role}' chatbot"
         )
     
     try:
@@ -192,12 +288,16 @@ async def chat(message: ChatMessage):
         )
 
 @app.get("/api/conversations/{conversation_id}", response_model=Dict[str, Any])
-async def get_conversation(conversation_id: str):
+async def get_conversation(
+    conversation_id: str, 
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
     """
     Get a conversation history.
     
     Args:
         conversation_id: ID of the conversation
+        current_user: Current authenticated user or dev user in dev mode
         
     Returns:
         Conversation history
@@ -213,7 +313,99 @@ async def get_conversation(conversation_id: str):
         "messages": conversations[conversation_id]
     }
 
+@app.get("/api/conversations", response_model=List[Dict[str, Any]])
+async def get_all_conversations(
+    current_user: Dict[str, Any] = Depends(optional_has_role(["Manager"]))
+):
+    """
+    Get all conversations (Manager only).
+    
+    Args:
+        current_user: Current authenticated user with Manager role
+        
+    Returns:
+        List of all conversations
+    """
+    return [
+        {
+            "conversation_id": conv_id,
+            "message_count": len(messages),
+            "last_updated": messages[-1]["timestamp"] if messages else None,
+            "role": conv_id.split("_")[0] if "_" in conv_id else "unknown"
+        }
+        for conv_id, messages in conversations.items()
+    ]
+
+@app.delete("/api/conversations/{conversation_id}", response_model=Dict[str, Any])
+async def delete_conversation(
+    conversation_id: str,
+    current_user: Dict[str, Any] = Depends(optional_has_role(["Manager"]))
+):
+    """
+    Delete a conversation (Manager only).
+    
+    Args:
+        conversation_id: ID of the conversation
+        current_user: Current authenticated user with Manager role
+        
+    Returns:
+        Success message
+    """
+    if conversation_id not in conversations:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Conversation not found: {conversation_id}"
+        )
+        
+    del conversations[conversation_id]
+    
+    return {
+        "success": True,
+        "message": f"Conversation {conversation_id} deleted successfully"
+    }
+
+@app.get("/api/user/role", response_model=Dict[str, Any])
+async def get_user_role(current_user: Dict[str, Any] = Depends(get_optional_current_user)):
+    """
+    Get the current user's role.
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        User role information
+    """
+    return {
+        "username": current_user.get("username"),
+        "role": current_user.get("role"),
+        "allowed_chatbot_roles": get_allowed_chatbot_roles(current_user.get("role", ""))
+    }
+
+def get_allowed_chatbot_roles(user_role: str) -> List[str]:
+    """
+    Determine which chatbot roles a user can access based on their role.
+    
+    Args:
+        user_role: User's role in the system
+        
+    Returns:
+        List of chatbot roles the user can access
+    """
+    role_mapping = {
+        "Manager": ["clerk", "picker", "packer", "driver", "manager"],
+        "ClerkSupervisor": ["clerk"],
+        "PickerSupervisor": ["picker"],
+        "PackerSupervisor": ["packer"],
+        "DriverSupervisor": ["driver"],
+        "Clerk": ["clerk"],
+        "Picker": ["picker"],
+        "Packer": ["packer"],
+        "Driver": ["driver"]
+    }
+    
+    return role_mapping.get(user_role, [])
+
 # Run the server
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run("main:app", host="127.0.0.1", port=8001, reload=True)

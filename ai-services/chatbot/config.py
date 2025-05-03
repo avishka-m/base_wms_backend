@@ -19,6 +19,10 @@ DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 # WMS API configuration
 WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 
+# Development mode configuration
+DEV_MODE = os.getenv("DEV_MODE", "True").lower() == "true"  # Default to True for easier development
+DEV_USER_ROLE = os.getenv("DEV_USER_ROLE", "Manager")  # Default test user role
+
 # Vector DB configuration
 CHROMA_PERSIST_DIRECTORY = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
 CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "wms_knowledge")

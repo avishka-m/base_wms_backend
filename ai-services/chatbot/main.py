@@ -91,9 +91,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React frontend
-        "http://localhost:5173",  # Vite frontend
-        "http://127.0.0.1:5173",  # Vite frontend alternative
+        # "http://localhost:3000",  # React frontend
+        # "http://localhost:5173",  # Vite frontend
+        # "http://127.0.0.1:5173",  # Vite frontend alternative
+        "*" # Allow all origins for development
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -128,37 +129,32 @@ class HealthCheckResponse(BaseModel):
 conversations = {}
 
 # Authentication helper function
-async def validate_user_role(token: str = Depends(oauth2_scheme), role: Optional[str] = None):
+async def validate_user_role(current_user: Dict[str, Any], required_role: str) -> Dict[str, Any]:
     """
-    Validate the user's token and check if they have the correct role.
+    Validate that the user has the required role.
     
     Args:
-        token: JWT token
-        role: Required role (optional)
+        current_user: The authenticated user data
+        required_role: The role required for the operation
         
     Returns:
-        User data if authenticated, else raises 401/403
+        User data if validated, else raises 403
     """
-    try:
-        # Get the current user from the token
-        user = await get_current_active_user(Depends(get_current_user))
+    user_role = current_user.get("role", "").lower()
+    
+    # Manager role has access to all agents
+    if user_role == "manager":
+        return current_user
         
-        # If a specific role is required, check that the user has it
-        if role and user.get("role").lower() != role.lower():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. You need {role} role to use this agent."
-            )
-            
-        return user
-    except Exception as e:
+    # Check if user has the required role
+    if user_role != required_role.lower():
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied. You need {required_role.capitalize()} role to use this agent."
         )
+            
+    return current_user
 
-# API routes
 @app.get("/", response_model=HealthCheckResponse)
 async def root(current_user: Dict[str, Any] = Depends(get_current_active_user)):
     """Root endpoint - health check."""
@@ -185,20 +181,15 @@ async def chat(
     """
     role = message.role.lower()
     
-    # Validate role
+    # Validate role exists
     if role not in agents:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid role: {role}. Must be one of {list(agents.keys())}"
         )
     
-    # Verify the user's role matches the requested agent or is a manager
-    user_role = current_user.get("role", "").lower()
-    if user_role != role and user_role != "manager":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access denied. You need {role.capitalize()} role to use this agent."
-        )
+    # Validate user has permission for this role
+    await validate_user_role(current_user, role)
     
     try:
         # Get the appropriate agent

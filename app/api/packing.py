@@ -246,7 +246,7 @@ async def print_shipping_label(
         {"$set": {"label_printed": True, "updated_at": packing.get("updated_at")}}
     )
     
-    # In a real system, you would integrate with a label printing service here
+    # would integrate with a label printing service here
     
     return {
         "message": f"Shipping label for packing ID {packing_id} has been printed",

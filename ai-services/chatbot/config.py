@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from typing import List
 
 # Load environment variables
 load_dotenv()
@@ -89,3 +90,36 @@ API_ENDPOINTS = {
     "vehicles": f"{WMS_API_BASE_URL}/vehicles",
     "customers": f"{WMS_API_BASE_URL}/customers"
 }
+
+# API Configuration
+API_V1_PREFIX = "/api"
+PROJECT_NAME = "WMS Chatbot API"
+PROJECT_DESCRIPTION = "Warehouse Management System Chatbot API for role-based assistance"
+PROJECT_VERSION = "1.0.0"
+
+# Development Settings
+DEBUG_MODE = True
+DEV_MODE = True
+DEV_USER_ROLE = "Manager"  # Default role for development
+
+# Server Settings
+HOST = "127.0.0.1"
+PORT = 8001
+
+# Auth Settings
+AUTH_TOKEN_URL = "http://localhost:8002/api/v1/auth/token"
+
+# CORS Settings
+CORS_ORIGINS: List[str] = [
+    "http://localhost:3000",  # React frontend
+    "http://localhost:5173",  # Vite frontend
+    "http://127.0.0.1:5173",  # Vite frontend alternative
+]
+
+# Conversation Settings
+MAX_CONVERSATION_MESSAGES = 100
+
+# Logging Settings
+LOG_LEVEL = "INFO"
+LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+LOG_FILE = "chatbot.log"

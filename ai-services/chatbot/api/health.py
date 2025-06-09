@@ -1,7 +1,7 @@
 from datetime import datetime
 from fastapi import APIRouter
 
-from chatbot.models.schemas import HealthCheckResponse
+from models.schemas import HealthCheckResponse
 
 router = APIRouter(tags=["health"])
 

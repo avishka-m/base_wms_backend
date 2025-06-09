@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from fastapi import APIRouter, Depends
 
-from chatbot.dependencies.auth import get_optional_current_user, get_allowed_chatbot_roles
+from dependencies.auth import get_optional_current_user, get_allowed_chatbot_roles
 
 router = APIRouter(prefix="/user", tags=["user"])
 

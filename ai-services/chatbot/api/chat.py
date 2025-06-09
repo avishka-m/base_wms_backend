@@ -3,15 +3,15 @@ from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
 
-from chatbot.models.schemas import (
+from models.schemas import (
     ChatMessage, 
     ChatResponse, 
     NewConversation,
     ConversationResponse,
     ConversationListItem
 )
-from chatbot.dependencies.auth import get_optional_current_user, get_allowed_chatbot_roles
-from chatbot.utils.conversation_store import (
+from dependencies.auth import get_optional_current_user, get_allowed_chatbot_roles
+from utils.conversation_store import (
     create_conversation,
     add_message,
     get_conversation,
@@ -21,10 +21,19 @@ from chatbot.utils.conversation_store import (
 )
 
 # Get reference to the global agents dictionary
-from chatbot.main import agents
+from core.lifespan import get_agents
 
 logger = logging.getLogger("wms_chatbot")
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+# Get the agents when needed
+agents = None
+
+def get_agent_dict():
+    global agents
+    if agents is None:
+        agents = get_agents()
+    return agents
 
 @router.post("/conversations", response_model=Dict[str, Any])
 async def create_new_conversation(
@@ -45,10 +54,11 @@ async def create_new_conversation(
     user_id = current_user.get("username", "anonymous")
     
     # Validate role exists
-    if data.role.lower() not in agents:
+    agent_dict = get_agent_dict()
+    if data.role.lower() not in agent_dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {data.role}. Must be one of {list(agents.keys())}"
+            detail=f"Invalid role: {data.role}. Must be one of {list(agent_dict.keys())}"
         )
     
     # Create the conversation
@@ -80,10 +90,11 @@ async def chat(
     user_id = current_user.get("username", "anonymous")
     
     # Validate role exists
-    if role not in agents:
+    agent_dict = get_agent_dict()
+    if role not in agent_dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {role}. Must be one of {list(agents.keys())}"
+            detail=f"Invalid role: {role}. Must be one of {list(agent_dict.keys())}"
         )
     
     # Validate user has access to this chatbot role
@@ -96,7 +107,7 @@ async def chat(
     
     try:
         # Get the appropriate agent
-        agent = agents[role]
+        agent = agent_dict[role]
         
         # Log the incoming message
         logger.info(f"Received message from {role}: {message.message[:100]}")

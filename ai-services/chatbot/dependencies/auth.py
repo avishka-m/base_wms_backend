@@ -2,8 +2,15 @@ from typing import Dict, Any, List
 from fastapi import Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer
 import logging
+import sys
+import os
 
-from chatbot.config import DEV_MODE, DEV_USER_ROLE, AUTH_TOKEN_URL
+# Add the parent directory to path to import from app modules
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from config import DEV_MODE, DEV_USER_ROLE, AUTH_TOKEN_URL
 from app.auth.dependencies import get_current_user
 
 logger = logging.getLogger("wms_chatbot")

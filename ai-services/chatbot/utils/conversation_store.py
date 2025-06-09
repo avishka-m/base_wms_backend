@@ -1,8 +1,9 @@
+"""Conversation store utilities."""
+
 from typing import Dict, Any, List
 from datetime import datetime
 from fastapi import HTTPException, status
-
-from chatbot.config import MAX_CONVERSATION_MESSAGES
+from config import MAX_CONVERSATION_MESSAGES
 
 # Simple in-memory conversation store
 # In production, this should be replaced with a database

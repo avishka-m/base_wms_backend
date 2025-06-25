@@ -34,7 +34,7 @@ import json
 load_dotenv()
 
 # Get MongoDB connection URL
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+MONGODB_URL = os.getenv("MONGODB_URL_1", "mongodb://localhost:27017")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 
 # Set up password hashing for worker accounts

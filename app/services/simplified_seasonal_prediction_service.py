@@ -1,7 +1,31 @@
 """
 Simplified Seasonal Prediction Service
 
-A streamlined version that directly imports only what's needed for FastAPI integration,
+A streamli            if data_file.exists():
+                self._data = pd.read_csv(data_file)
+                logger.info(f"✅ Loaded {len(self._data)} processed records from {data_source}")
+                
+                # Verify data structure
+                required_columns = ['product_id', 'ds', 'y']
+                if all(col in self._data.columns for col in required_columns):
+                    logger.info("✅ Data structure validated")
+                    self._available = True
+                    
+                    # Log data info
+                    if 'category' in self._data.columns:
+                        categories = self._data['category'].value_counts().to_dict()
+                        logger.info(f"📊 Categories found: {categories}")
+                    
+                    date_range = f"{self._data['ds'].min()} to {self._data['ds'].max()}"
+                    logger.info(f"📅 Data date range: {date_range}")
+                    
+                else:
+                    missing_cols = [col for col in required_columns if col not in self._data.columns]
+                    raise ValueError(f"Data missing required columns: {missing_cols}")
+            else:
+                logger.warning("⚠️ No processed data found - service available but no data")
+                # Service is technically available, just no data
+                self._available = True directly imports only what's needed for FastAPI integration,
 bypassing complex module dependencies that cause import issues under uvicorn.
 """
 

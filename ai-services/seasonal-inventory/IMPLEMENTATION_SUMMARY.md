@@ -171,7 +171,7 @@ The system implements a comprehensive architecture:
 │   Data Sources  │    │   AI Services   │    │   Frontend UI   │
 │                 │    │                 │    │                 │
 │ ├─ Kaggle APIs  │    │ ├─ Prophet ML   │    │ ├─ Dashboard    │
-│ ├─ WMS Database │━━━▶│ ├─ Forecasting  │━━━▶│ ├─ Charts       │
+│ ├─ WMS Database │━━▶ │ ├─ Forecasting  ━━▶ │ ├─ Charts       │
 │ ├─ Weather APIs │    │ ├─ Seasonality  │    │ ├─ Analytics    │
 │ └─ Economic APIs│    │ └─ Predictions  │    │ └─ Reports      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘

@@ -40,13 +40,20 @@ class SimplifiedSeasonalPredictionService:
             except ImportError as e:
                 raise ImportError(f"Prophet not available: {e}")
             
-            # Step 2: Try to load the processed data directly
+            # Step 2: Try to load the modern processed data first, fallback to old data
             # Use absolute path calculation
             current_file = Path(__file__).resolve()
             backend_dir = current_file.parent.parent.parent
-            data_file = backend_dir / 'ai-services' / 'seasonal-inventory' / 'data' / 'processed' / 'daily_demand_by_product.csv'
+            
+            # Try modern dataset first (2022-2024)
+            modern_data_file = backend_dir / 'ai-services' / 'seasonal-inventory' / 'data' / 'processed' / 'daily_demand_by_product_modern.csv'
+            old_data_file = backend_dir / 'ai-services' / 'seasonal-inventory' / 'data' / 'processed' / 'daily_demand_by_product.csv'
+            
+            data_file = modern_data_file if modern_data_file.exists() else old_data_file
+            data_source = "modern (2022-2024)" if modern_data_file.exists() else "legacy (2010-2011)"
             
             logger.info(f"Looking for data file: {data_file}")
+            logger.info(f"Data source: {data_source}")
             
             if data_file.exists():
                 self._data = pd.read_csv(data_file)

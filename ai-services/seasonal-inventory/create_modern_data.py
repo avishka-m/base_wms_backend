@@ -248,20 +248,24 @@ class ModernEcommerceDataGenerator:
     def generate_sample_analysis(self, df: pd.DataFrame) -> dict:
         """Generate sample analysis of the created dataset"""
         
+        # Convert ds to datetime if it's not already
+        df_analysis = df.copy()
+        df_analysis['ds'] = pd.to_datetime(df_analysis['ds'])
+        
         analysis = {
             "dataset_summary": {
-                "total_records": len(df),
-                "unique_products": df['product_id'].nunique(),
+                "total_records": len(df_analysis),
+                "unique_products": df_analysis['product_id'].nunique(),
                 "date_range": {
-                    "start": df['ds'].min(),
-                    "end": df['ds'].max()
+                    "start": str(df_analysis['ds'].min()),
+                    "end": str(df_analysis['ds'].max())
                 },
-                "categories": df['category'].value_counts().to_dict(),
-                "total_demand": df['y'].sum(),
-                "average_daily_demand": df['y'].mean()
+                "categories": df_analysis['category'].value_counts().to_dict(),
+                "total_demand": float(df_analysis['y'].sum()),
+                "average_daily_demand": float(df_analysis['y'].mean())
             },
-            "top_products": df.groupby('product_id')['y'].sum().sort_values(ascending=False).head(10).to_dict(),
-            "seasonal_trends": df.groupby(df['ds'].str[:7])['y'].sum().tail(12).to_dict()
+            "top_products": df_analysis.groupby('product_id')['y'].sum().sort_values(ascending=False).head(10).to_dict(),
+            "seasonal_trends": df_analysis.groupby(df_analysis['ds'].dt.to_period('M'))['y'].sum().tail(12).to_dict()
         }
         
         return analysis

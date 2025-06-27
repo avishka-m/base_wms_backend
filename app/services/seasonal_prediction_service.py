@@ -5,6 +5,13 @@ This service provides an integration layer between the WMS backend
 and the seasonal inventory prediction AI module.
 """
 
+# Apply numpy compatibility patches first
+try:
+    from app.utils.numpy_compat import apply_all_patches
+    apply_all_patches()
+except ImportError:
+    pass
+
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -33,6 +40,11 @@ class SeasonalPredictionService:
     def _initialize_services(self):
         """Initialize the seasonal inventory services"""
         try:
+            # Temporarily disable seasonal prediction services due to NumPy compatibility issues
+            logger.warning("⚠️ Seasonal prediction services temporarily disabled due to NumPy compatibility issues")
+            self._available = False
+            return
+            
             import sys
             import os
             seasonal_path = os.path.join(
@@ -45,16 +57,24 @@ class SeasonalPredictionService:
                 sys.path.append(seasonal_path)
             
             from src.models.prophet_forecaster import ProphetForecaster
-            from src.item_analysis_service import ItemAnalysisService
-            from src.data_orchestrator import SeasonalDataOrchestrator
-            from config import PROPHET_CONFIG
+            from config import PROCESSED_DIR
+            import pandas as pd
+            from pathlib import Path
             
-            self._forecaster = ProphetForecaster(config=PROPHET_CONFIG)
-            self._analysis_service = ItemAnalysisService()
-            self._data_orchestrator = SeasonalDataOrchestrator()
-            self._available = True
+            # Initialize forecaster
+            self._forecaster = ProphetForecaster()
             
-            logger.info("Seasonal inventory prediction services initialized successfully")
+            # Load processed data
+            processed_file = Path(PROCESSED_DIR) / "daily_demand_by_product.csv"
+            if processed_file.exists():
+                self._data = pd.read_csv(processed_file)
+                logger.info(f"✅ Loaded {len(self._data)} processed records")
+                self._available = True
+            else:
+                logger.warning("⚠️ No processed data found")
+                self._available = False
+            
+            logger.info("✅ Seasonal prediction services initialized successfully")
             
         except ImportError as e:
             logger.warning(f"Seasonal inventory services not available: {e}")
@@ -73,7 +93,7 @@ class SeasonalPredictionService:
         if not self._available:
             raise RuntimeError("Seasonal inventory prediction services are not available")
     
-    async def predict_item_demand(
+    def predict_item_demand(
         self,
         item_id: str,
         horizon_days: int = 30,
@@ -92,52 +112,66 @@ class SeasonalPredictionService:
         Returns:
             Dictionary containing predictions and analysis
         """
-        self.require_available()
-        
-        try:
-            # Get historical data
-            data = await self._data_orchestrator.create_product_dataset(
-                product_id=item_id,
-                include_external=include_external_factors
-            )
+        # Temporarily disabled due to NumPy compatibility issues
+        return {
+            "status": "service_disabled",
+            "message": "Seasonal prediction service temporarily disabled due to NumPy compatibility issues",
+            "item_id": item_id,
+            "success": False
+        }
             
-            if data is None or data.empty:
+            # Train the model
+            train_result = forecaster.train(item_data)
+            
+            if train_result and 'error' not in train_result:
+                # Generate predictions
+                forecast = forecaster.predict(periods=horizon_days)
+                
+                if forecast is not None and len(forecast) > 0:
+                    # Get forecast summary
+                    forecast_summary = forecaster.get_forecast_summary(forecast)
+                    
+                    return {
+                        "status": "success",
+                        "item_id": item_id,
+                        "success": True,
+                        "forecast_horizon_days": horizon_days,
+                        "total_forecast_points": len(forecast),
+                        "historical_data_points": len(item_data),
+                        "training_metrics": {
+                            "mape": train_result.get('mean_mape', 0),
+                            "rmse": train_result.get('mean_rmse', 0),
+                            "mae": train_result.get('mean_mae', 0)
+                        },
+                        "forecast_data": forecast.to_dict('records') if include_external_factors else None,
+                        "forecast_summary": forecast_summary,
+                        "confidence_interval": confidence_interval
+                    }
+                else:
+                    return {
+                        "status": "prediction_failed",
+                        "message": "Failed to generate forecast",
+                        "item_id": item_id,
+                        "success": False
+                    }
+            else:
                 return {
-                    "status": "no_data",
-                    "message": f"No historical data found for item {item_id}",
-                    "item_id": item_id
+                    "status": "training_failed", 
+                    "message": f"Model training failed: {train_result.get('error', 'Unknown error') if train_result else 'No result'}",
+                    "item_id": item_id,
+                    "success": False
                 }
-            
-            # Make predictions
-            predictions = self._forecaster.predict_product_demand(
-                product_id=item_id,
-                data=data,
-                horizon_days=horizon_days,
-                confidence_interval=confidence_interval
-            )
-            
-            # Calculate summary statistics
-            summary = self._calculate_prediction_summary(predictions)
-            
-            return {
-                "status": "success",
-                "item_id": item_id,
-                "horizon_days": horizon_days,
-                "confidence_interval": confidence_interval,
-                "predictions": predictions.to_dict(orient='records'),
-                "summary": summary,
-                "generated_at": datetime.now().isoformat()
-            }
-            
+                
         except Exception as e:
             logger.error(f"Error predicting demand for item {item_id}: {e}")
             return {
                 "status": "error",
                 "message": str(e),
-                "item_id": item_id
+                "item_id": item_id,
+                "success": False
             }
-    
-    async def predict_multiple_items(
+
+    def predict_multiple_items(
         self,
         item_ids: List[str],
         horizon_days: int = 30,
@@ -164,7 +198,7 @@ class SeasonalPredictionService:
         # Process each item
         for item_id in item_ids:
             try:
-                result = await self.predict_item_demand(
+                result = self.predict_item_demand(
                     item_id=item_id,
                     horizon_days=horizon_days,
                     confidence_interval=confidence_interval,
@@ -334,19 +368,21 @@ class SeasonalPredictionService:
                 "status": "available",
                 "services": {
                     "forecaster": bool(self._forecaster),
-                    "analysis_service": bool(self._analysis_service),
-                    "data_orchestrator": bool(self._data_orchestrator)
+                    "processed_data": hasattr(self, '_data') and self._data is not None
                 },
                 "timestamp": datetime.now().isoformat()
             }
             
-            # Add model status if available
-            if self._forecaster:
-                try:
-                    model_status = self._forecaster.get_model_status()
-                    status["model_status"] = model_status
-                except Exception as e:
-                    status["model_status"] = {"error": str(e)}
+            # Add data info if available
+            if hasattr(self, '_data') and self._data is not None:
+                status["data_info"] = {
+                    "total_records": len(self._data),
+                    "unique_products": self._data['product_id'].nunique(),
+                    "date_range": {
+                        "start": str(self._data['ds'].min()),
+                        "end": str(self._data['ds'].max())
+                    }
+                }
             
             return status
             

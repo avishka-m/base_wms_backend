@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import logging
 
 from ..auth.dependencies import has_role
-from ..services.seasonal_prediction_service import get_seasonal_prediction_service
+from ..services.seasonal_prediction_service_temp import get_seasonal_prediction_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

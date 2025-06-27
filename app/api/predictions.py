@@ -5,7 +5,6 @@ from pydantic import BaseModel
 import logging
 
 from ..auth.dependencies import has_role
-from ..services.seasonal_prediction_service_temp import get_seasonal_prediction_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,7 +36,8 @@ class CategoryPredictionRequest(BaseModel):
 # Global instances (in production, consider dependency injection)
 def get_prediction_service():
     """Get the seasonal prediction service instance"""
-    return get_seasonal_prediction_service()
+    from ..services.simplified_seasonal_prediction_service import get_simplified_seasonal_prediction_service
+    return get_simplified_seasonal_prediction_service()
 
 @router.get("/health")
 async def prediction_health_check():

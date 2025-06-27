@@ -23,9 +23,9 @@ class SeasonalPredictionService:
         self._initialize_services()
     
     def _initialize_services(self):
-        """Initialize the seasonal inventory services with safe fallback"""
+        """Initialize the seasonal inventory services with NumPy 2.x compatibility"""
         try:
-            # Try to import without timeout for now - just catch exceptions
+            # With Prophet 1.1.7 and NumPy 2.3.1, compatibility should work
             import sys
             import os
             seasonal_path = os.path.join(
@@ -39,37 +39,83 @@ class SeasonalPredictionService:
             if seasonal_path not in sys.path:
                 sys.path.append(seasonal_path)
             
-            # This import might hang due to NumPy issues
-            # For now, let's skip it and just log that it's disabled
-            logger.warning("⚠️ Skipping Prophet import due to known NumPy compatibility issues")
-            raise ImportError("Prophet import disabled due to NumPy compatibility")
+            logger.info("🔄 Initializing Prophet with NumPy 2.x compatibility...")
             
-            # Commented out for now:
-            # from src.models.prophet_forecaster import ProphetForecaster
-            # from config import PROCESSED_DIR
-            # import pandas as pd
+            # Import with NumPy 2.x and Prophet 1.1.7
+            # Import more selectively to avoid kaggle dependency conflicts
+            seasonal_path = os.path.join(
+                os.path.dirname(__file__), 
+                '..', '..', 
+                'ai-services', 
+                'seasonal-inventory'
+            )
+            seasonal_path = os.path.abspath(seasonal_path)
             
-            # # Initialize forecaster
-            # self._forecaster = ProphetForecaster()
+            if seasonal_path not in sys.path:
+                sys.path.insert(0, seasonal_path)  # Insert at beginning to prioritize
             
-            # # Load processed data
-            # processed_file = Path(PROCESSED_DIR) / "daily_demand_by_product.csv"
-            # if processed_file.exists():
-            #     self._data = pd.read_csv(processed_file)
-            #     logger.info(f"✅ Loaded {len(self._data)} processed records")
-            #     self._available = True
-            # else:
-            #     logger.warning("⚠️ No processed data found")
-            #     self._available = False
+            # Import only the specific module we need
+            sys.path.insert(0, os.path.join(seasonal_path, 'src'))
+            from models.prophet_forecaster import ProphetForecaster
+            from config import PROCESSED_DIR
+            import pandas as pd
+            from pathlib import Path
             
-            # logger.info("✅ Seasonal prediction services initialized successfully")
+            logger.info("✅ Prophet imported successfully with NumPy 2.x!")
             
+            # Initialize forecaster
+            self._forecaster = ProphetForecaster()
+            logger.info("✅ Prophet forecaster initialized")
+            
+            # Load processed data
+            processed_file = Path(PROCESSED_DIR) / "daily_demand_by_product.csv"
+            absolute_path = processed_file.resolve()
+            logger.info(f"🔍 Looking for processed data at: {absolute_path}")
+            
+            if processed_file.exists():
+                self._data = pd.read_csv(processed_file)
+                logger.info(f"✅ Loaded {len(self._data)} processed records")
+                self._available = True
+                
+                # Update data info for health check
+                self._data_info = {
+                    "total_records": len(self._data),
+                    "unique_products": self._data['product_id'].nunique(),
+                    "date_range": {
+                        "start": str(self._data['ds'].min()),
+                        "end": str(self._data['ds'].max())
+                    },
+                    "last_updated": str(processed_file.stat().st_mtime)
+                }
+                logger.info("🎉 Seasonal prediction service fully operational!")
+            else:
+                logger.warning(f"⚠️ No processed data found at: {absolute_path}")
+                self._available = True  # Service is available, just no data yet
+                self._data_info = {
+                    "total_records": 0,
+                    "unique_products": 0,
+                    "date_range": {"start": None, "end": None},
+                    "last_updated": None
+                }
+                
         except ImportError as e:
-            logger.warning(f"⚠️ Seasonal inventory services not available: {e}")
+            logger.warning(f"⚠️ Prophet/NumPy import failed: {e}")
             self._available = False
+            self._data_info = {
+                "total_records": 0,
+                "unique_products": 0,
+                "date_range": {"start": None, "end": None},
+                "last_updated": None
+            }
         except Exception as e:
-            logger.error(f"❌ Error initializing seasonal inventory services: {e}")
+            logger.error(f"❌ Error initializing seasonal prediction service: {e}")
             self._available = False
+            self._data_info = {
+                "total_records": 0,
+                "unique_products": 0,
+                "date_range": {"start": None, "end": None},
+                "last_updated": None
+            }
     
     def is_available(self) -> bool:
         """Check if the service is available"""
@@ -90,12 +136,84 @@ class SeasonalPredictionService:
         """
         Predict demand for a specific item.
         """
-        return {
-            "status": "service_disabled",
-            "message": "Seasonal prediction service temporarily disabled due to NumPy compatibility issues",
-            "item_id": item_id,
-            "success": False
-        }
+        if not self._available:
+            return {
+                "status": "service_disabled",
+                "message": "Seasonal prediction service temporarily disabled due to NumPy compatibility issues",
+                "item_id": item_id,
+                "success": False
+            }
+        
+        try:
+            # Get historical data for this item
+            item_data = self._data[self._data['product_id'] == item_id].copy()
+            
+            if item_data.empty:
+                return {
+                    "status": "no_data",
+                    "message": f"No historical data found for item {item_id}",
+                    "item_id": item_id,
+                    "success": False
+                }
+            
+            if len(item_data) < 30:
+                return {
+                    "status": "insufficient_data",
+                    "message": f"Insufficient data for item {item_id}: {len(item_data)} records",
+                    "item_id": item_id,
+                    "success": False
+                }
+            
+            # Initialize forecaster for this specific product
+            from models.prophet_forecaster import ProphetForecaster
+            forecaster = ProphetForecaster(product_id=item_id)
+            
+            # Train the model
+            train_result = forecaster.train(item_data)
+            
+            if train_result and 'error' not in train_result:
+                # Generate predictions
+                forecast = forecaster.predict(periods=horizon_days)
+                
+                if forecast is not None and len(forecast) > 0:
+                    # Get forecast summary
+                    forecast_summary = forecaster.get_forecast_summary(forecast)
+                    
+                    return {
+                        "status": "success",
+                        "item_id": item_id,
+                        "forecast": forecast_summary,
+                        "metadata": {
+                            "horizon_days": horizon_days,
+                            "confidence_interval": confidence_interval,
+                            "training_data_points": len(item_data),
+                            "prediction_points": len(forecast)
+                        },
+                        "success": True
+                    }
+                else:
+                    return {
+                        "status": "forecast_failed",
+                        "message": "Failed to generate forecast",
+                        "item_id": item_id,
+                        "success": False
+                    }
+            else:
+                return {
+                    "status": "training_failed",
+                    "message": f"Model training failed: {train_result.get('error', 'Unknown error') if train_result else 'No result'}",
+                    "item_id": item_id,
+                    "success": False
+                }
+                
+        except Exception as e:
+            logger.error(f"Error predicting demand for item {item_id}: {e}")
+            return {
+                "status": "error",
+                "message": str(e),
+                "item_id": item_id,
+                "success": False
+            }
 
     def predict_multiple_items(
         self,
@@ -159,26 +277,30 @@ class SeasonalPredictionService:
 
     def get_service_status(self) -> Dict[str, Any]:
         """Get detailed service status information"""
+        if self._available:
+            message = "Seasonal prediction service ready with NumPy 2.x compatibility"
+            if self._data is None or len(self._data) == 0:
+                message = "Seasonal prediction service ready but no processed data available"
+        else:
+            message = "Seasonal prediction service disabled due to import/initialization errors"
+            
         return {
             "available": self._available,
-            "status": "disabled" if not self._available else "ready",
-            "message": "Seasonal prediction service temporarily disabled due to NumPy compatibility issues",
+            "status": "ready" if self._available else "disabled",
+            "message": message,
             "timestamp": datetime.now().isoformat(),
             "features": {
-                "item_demand_prediction": False,
-                "batch_predictions": False,
-                "item_analysis": False,
-                "inventory_recommendations": False
+                "item_demand_prediction": self._available,
+                "batch_predictions": self._available,
+                "item_analysis": self._available,
+                "inventory_recommendations": self._available
             },
-            "data_info": {
+            "data_info": getattr(self, '_data_info', {
                 "total_records": 0,
                 "unique_products": 0,
-                "date_range": {
-                    "start": None,
-                    "end": None
-                },
+                "date_range": {"start": None, "end": None},
                 "last_updated": None
-            }
+            })
         }
 
 

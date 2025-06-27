@@ -10,7 +10,7 @@ import requests
 import json
 from datetime import datetime
 
-BASE_URL = "http://localhost:8002/api/v1"
+BASE_URL = "http://localhost:8000/api/v1"
 
 def test_api_endpoints():
     """Test the seasonal prediction API endpoints"""

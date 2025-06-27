@@ -13,9 +13,9 @@ from pathlib import Path
 import asyncio
 import numpy as np
 
-from data_collection.kaggle_downloader import KaggleDataDownloader
-from data_collection.web_scraper import WebDataScraper
-from data_collection.wms_data_extractor import WMSDataExtractor
+from .data_collection.kaggle_downloader import KaggleDataDownloader
+from .data_collection.web_scraper import WebDataScraper
+from .data_collection.wms_data_extractor import WMSDataExtractor
 from config import PROCESSED_DIR
 
 # Setup logging

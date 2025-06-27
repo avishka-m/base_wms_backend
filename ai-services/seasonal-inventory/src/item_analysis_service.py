@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import asyncio
 
-from models.prophet_forecaster import ProphetForecaster
-from data_collection.wms_data_extractor import WMSDataExtractor
+from .models.prophet_forecaster import ProphetForecaster
+from .data_collection.wms_data_extractor import WMSDataExtractor
 from config import PROCESSED_DIR
 
 # Setup logging

@@ -14,6 +14,7 @@ from .shipping import router as shipping_router
 from .returns import router as returns_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
+from .predictions import router as predictions_router
 
 # Create main API router
 api_router = APIRouter()
@@ -32,3 +33,4 @@ api_router.include_router(shipping_router, prefix="/shipping", tags=["Shipping"]
 api_router.include_router(returns_router, prefix="/returns", tags=["Returns"])
 api_router.include_router(vehicles_router, prefix="/vehicles", tags=["Vehicles"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])

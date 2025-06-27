@@ -20,7 +20,7 @@ try:
     from data_collection.web_scraper import WebDataScraper
     from data_collection.wms_data_extractor import WMSDataExtractor
     from data_orchestrator import SeasonalDataOrchestrator
-    from config import KAGGLE_USERNAME, KAGGLE_KEY
+    # Don't import KAGGLE credentials from config, we'll check them differently
 except ImportError as e:
     print(f"❌ Import error: {e}")
     print("Make sure you're running this script from the seasonal-inventory directory")
@@ -41,14 +41,17 @@ def check_prerequisites():
     issues = []
     
     # Check Kaggle credentials
-    if not KAGGLE_USERNAME or not KAGGLE_KEY:
+    try:
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+        print("   ✅ Kaggle API credentials configured")
+    except Exception as e:
         issues.append("Kaggle API credentials not configured")
         print("   ❌ Kaggle API credentials missing")
-        print("      Set KAGGLE_USERNAME and KAGGLE_KEY environment variables")
-        print("      Or run: kaggle config set username YOUR_USERNAME")
-        print("              kaggle config set key YOUR_API_KEY")
-    else:
-        print("   ✅ Kaggle API credentials configured")
+        print(f"      Error: {e}")
+        print("      Make sure kaggle.json is in ~/.kaggle/ directory")
+        print("      Or set KAGGLE_USERNAME and KAGGLE_KEY environment variables")
     
     # Check if data directories exist
     data_dir = current_dir / "data"

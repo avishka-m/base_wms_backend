@@ -254,8 +254,12 @@ class SeasonalProphetForecaster:
             
             if data_days < 365:
                 initial = f"{int(data_days * 0.6)}d"
-                period = f"{int(data_days * 0.1)}d"
+                period = f"{int(data_days * 0.2)}d"
                 horizon = f"{int(data_days * 0.1)}d"
+            elif data_days < 730:  # Less than 2 years
+                initial = f"{int(data_days * 0.7)}d"
+                period = f"{int(data_days * 0.1)}d"
+                horizon = f"{int(data_days * 0.08)}d"
             else:
                 initial = "365d"
                 period = "30d"
@@ -570,3 +574,7 @@ if __name__ == "__main__":
             print(f"   • Forecast periods: {summary['forecast_periods']}")
             print(f"   • Total predicted demand: {summary['total_predicted_demand']:.0f}")
             print(f"   • Average daily demand: {summary['mean_prediction']:.1f}")
+
+
+# Alias for backward compatibility
+ProphetForecaster = SeasonalProphetForecaster

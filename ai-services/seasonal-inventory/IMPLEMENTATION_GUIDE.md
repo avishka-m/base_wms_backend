@@ -10,16 +10,22 @@ cd backend/ai-services/seasonal-inventory
 pip install -r requirements.txt
 ```
 
-#### 1.2 Configure API Keys
+#### 1.2 Configure API Keys (Run in your activated virtual environment terminal)
 ```bash
-# Setup Kaggle API
+# Setup Kaggle API (run this in your terminal where venv is activated)
 kaggle config set username YOUR_KAGGLE_USERNAME
 kaggle config set key YOUR_KAGGLE_KEY
 
-# Setup environment variables
-export OPENAI_API_KEY="your_openai_key"
-export MONGODB_URL="mongodb://localhost:27017"
-export WMS_API_BASE_URL="http://localhost:8000/api/v1"
+# For Windows PowerShell - Setup environment variables
+$env:OPENAI_API_KEY="your_openai_key"
+$env:MONGODB_URL="mongodb://localhost:27017"
+$env:WMS_API_BASE_URL="http://localhost:8000/api/v1"
+
+# Or create a .env file in the seasonal-inventory directory
+# .env file content:
+# OPENAI_API_KEY=your_openai_key
+# MONGODB_URL=mongodb://localhost:27017
+# WMS_API_BASE_URL=http://localhost:8000/api/v1
 ```
 
 ### Step 2: Data Collection Strategy

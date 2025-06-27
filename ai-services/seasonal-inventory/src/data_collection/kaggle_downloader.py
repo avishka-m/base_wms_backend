@@ -89,7 +89,10 @@ class KaggleDataDownloader:
         """
         try:
             # Get dataset metadata
-            dataset = self.api.dataset_view(dataset_name)
+            datasets = self.api.dataset_list(search=dataset_name.split('/')[-1], user=dataset_name.split('/')[0])
+            if not datasets:
+                raise Exception(f"Dataset {dataset_name} not found")
+            dataset = datasets[0]
             
             # Get file list
             files = self.api.dataset_list_files(dataset_name).files

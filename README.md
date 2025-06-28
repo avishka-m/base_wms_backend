@@ -1,4 +1,4 @@
-# Warehouse Management System Backend
+<!-- # Warehouse Management System Backend
 
 This is the backend API for the Warehouse Management System (WMS), a comprehensive solution for inventory tracking, order processing, and logistics optimization.
 
@@ -24,7 +24,7 @@ This is the backend API for the Warehouse Management System (WMS), a comprehensi
 ### Prerequisites
 
 - Python 3.10+
-- MongoDB 5.0+
+- MongoDB 5.0+ -->
 
 ### Installation
 

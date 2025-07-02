@@ -26,7 +26,7 @@ DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 # WMS Integration
-WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8000/api/v1")
+WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 WMS_API_TIMEOUT = 30
 
 # =============================================================================

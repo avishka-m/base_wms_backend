@@ -1,1 +1,0 @@
-Warehouse picking procedure: 1. Receive task, 2. Locate items using optimized path, 3. Scan items, 4. Update system, 5. Deliver to packing.

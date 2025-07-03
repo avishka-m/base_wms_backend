@@ -11,7 +11,6 @@ from app.models.chatbot.chat_models import (
     ChatResponse,
     NewConversation,
     ConversationResponse,
-    ConversationList,
     UserRoleResponse,
     ConversationUpdateRequest,
     DeleteResponse
@@ -20,7 +19,7 @@ from app.services.chatbot.auth_service import get_optional_current_user, get_all
 from app.services.chatbot.agent_service import AgentService
 from app.services.chatbot.conversation_service import ConversationService
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # Initialize services
 agent_service = AgentService()

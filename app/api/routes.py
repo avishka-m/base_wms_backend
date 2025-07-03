@@ -14,7 +14,6 @@ from .shipping import router as shipping_router
 from .returns import router as returns_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
-from .dashboard import router as dashboard_router
 from .chatbot_routes import router as chatbot_router  # Now integrated into main backend
 
 # Create main API router
@@ -34,5 +33,4 @@ api_router.include_router(shipping_router, prefix="/shipping", tags=["Shipping"]
 api_router.include_router(returns_router, prefix="/returns", tags=["Returns"])
 api_router.include_router(vehicles_router, prefix="/vehicles", tags=["Vehicles"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
-api_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot"])  # Now integrated into main backend

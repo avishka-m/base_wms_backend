@@ -1,10 +1,3 @@
-# Temporarily disabled NumPy compatibility patches to allow server startup
-# try:
-#     from .utils.numpy_compat import apply_all_patches
-#     apply_all_patches()
-# except ImportError:
-#     pass
-
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .config import (

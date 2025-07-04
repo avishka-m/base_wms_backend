@@ -14,6 +14,93 @@ class OrdersService:
     """
     
     @staticmethod
+    def _normalize_order_data(order: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize order data to match the expected API response format.
+        
+        This handles inconsistent data structures in the database.
+        """
+        if not order:
+            return order
+            
+        # Create a copy to avoid modifying the original
+        normalized = order.copy()
+        
+        # Convert string IDs to integers where possible, otherwise use defaults
+        try:
+            if isinstance(normalized.get('customerID'), str):
+                # For string customerIDs like 'CUST001', extract number or use default
+                customer_id = normalized.get('customerID', '')
+                if customer_id.startswith('CUST'):
+                    normalized['customerID'] = int(customer_id[4:]) if customer_id[4:].isdigit() else 1
+                else:
+                    normalized['customerID'] = 1
+        except (ValueError, TypeError):
+            normalized['customerID'] = 1
+            
+        try:
+            if isinstance(normalized.get('orderID'), str):
+                # For UUID orderIDs, we'll need to generate a sequential ID
+                # For now, use the hash of the string
+                normalized['orderID'] = abs(hash(normalized['orderID'])) % 1000000
+        except (ValueError, TypeError):
+            normalized['orderID'] = 1
+            
+        try:
+            if isinstance(normalized.get('assigned_worker'), str):
+                # For string worker IDs like 'clerk1', extract number or use default
+                worker_id = normalized.get('assigned_worker', '')
+                if worker_id.startswith('clerk'):
+                    normalized['assigned_worker'] = int(worker_id[5:]) if worker_id[5:].isdigit() else 1
+                else:
+                    normalized['assigned_worker'] = 1
+        except (ValueError, TypeError):
+            if 'assigned_worker' in normalized:
+                normalized['assigned_worker'] = 1
+        
+        # Ensure shipping_address exists
+        if 'shipping_address' not in normalized or not normalized['shipping_address']:
+            normalized['shipping_address'] = 'Address not specified'
+            
+        # Normalize items structure
+        if 'items' in normalized:
+            normalized_items = []
+            for i, item in enumerate(normalized['items']):
+                normalized_item = item.copy()
+                
+                # Convert item_id to itemID if needed
+                if 'item_id' in normalized_item and 'itemID' not in normalized_item:
+                    try:
+                        item_id = normalized_item['item_id']
+                        if isinstance(item_id, str) and item_id.startswith('ITEM'):
+                            normalized_item['itemID'] = int(item_id[4:]) if item_id[4:].isdigit() else 1
+                        else:
+                            normalized_item['itemID'] = 1
+                    except (ValueError, TypeError):
+                        normalized_item['itemID'] = 1
+                    # Remove old field
+                    normalized_item.pop('item_id', None)
+                
+                # Convert unit_price to price if needed
+                if 'unit_price' in normalized_item and 'price' not in normalized_item:
+                    normalized_item['price'] = normalized_item['unit_price']
+                    normalized_item.pop('unit_price', None)
+                
+                # Ensure orderDetailID exists
+                if 'orderDetailID' not in normalized_item:
+                    normalized_item['orderDetailID'] = i + 1
+                
+                # Ensure required fields exist
+                if 'fulfilled_quantity' not in normalized_item:
+                    normalized_item['fulfilled_quantity'] = 0
+                    
+                normalized_items.append(normalized_item)
+            
+            normalized['items'] = normalized_items
+        
+        return normalized
+    
+    @staticmethod
     async def get_orders(skip: int = 0, limit: int = 100, 
                          status: Optional[str] = None,
                          customer_id: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -33,7 +120,10 @@ class OrdersService:
         orders = list(orders_collection.find(query)
                      .sort([("priority", 1), ("order_date", 1)])
                      .skip(skip).limit(limit))
-        return orders
+        
+        # Normalize all orders
+        normalized_orders = [OrdersService._normalize_order_data(order) for order in orders]
+        return normalized_orders
     
     @staticmethod
     async def get_order(order_id: int) -> Dict[str, Any]:
@@ -42,7 +132,7 @@ class OrdersService:
         """
         orders_collection = get_collection("orders")
         order = orders_collection.find_one({"orderID": order_id})
-        return order
+        return OrdersService._normalize_order_data(order) if order else order
     
     @staticmethod
     def get_order_by_id(order_id: str) -> Optional[Dict[str, Any]]:
@@ -58,7 +148,7 @@ class OrdersService:
                 order = orders_collection.find_one({"orderID": int(order_id)})
             except ValueError:
                 pass
-        return order
+        return OrdersService._normalize_order_data(order) if order else order
     
     @staticmethod
     async def create_order(order: OrderCreate) -> Dict[str, Any]:

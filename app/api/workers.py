@@ -100,6 +100,9 @@ async def create_worker(
     # Create new user
     user_doc = create_new_user(worker_data)
     
+    # Add workerID to the user document
+    user_doc["workerID"] = next_id
+    
     # Insert worker to database
     result = workers_collection.insert_one(user_doc)
     

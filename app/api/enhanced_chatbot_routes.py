@@ -389,15 +389,23 @@ async def get_user_roles(
         Available roles and current role
     """
     try:
+        # Debug: Log the types and values
+        logger.info("Getting available roles from agent service...")
         available_roles = agent_service.get_available_roles()
-        allowed_roles = get_allowed_chatbot_roles(current_user)
+        logger.info(f"Available roles: {available_roles}, type: {type(available_roles)}")
         
-        # Filter available roles by what the user is allowed to use
-        user_roles = [role for role in available_roles if role.lower() in [r.lower() for r in allowed_roles]]
+        # Extract user info from current_user dict
+        username = current_user.get("username", "anonymous") if current_user else "anonymous"
+        user_role = current_user.get("role", "Clerk") if current_user else "Clerk"
+        logger.info(f"User: {username}, role: {user_role}")
+        
+        allowed_roles = get_allowed_chatbot_roles(user_role)
+        logger.info(f"Allowed roles: {allowed_roles}, type: {type(allowed_roles)}")
         
         return UserRoleResponse(
-            available_roles=user_roles,
-            current_role=allowed_roles[0] if allowed_roles else "clerk"
+            username=username,
+            role=user_role,
+            allowed_chatbot_roles=allowed_roles
         )
         
     except Exception as e:

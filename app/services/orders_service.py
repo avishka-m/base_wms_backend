@@ -45,6 +45,22 @@ class OrdersService:
         return order
     
     @staticmethod
+    def get_order_by_id(order_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific order by ID (synchronous version for string IDs).
+        """
+        orders_collection = get_collection("orders")
+        # Try to find by orderID as string first, then as int
+        order = orders_collection.find_one({"orderID": order_id})
+        if not order:
+            try:
+                # Try to find by orderID as integer
+                order = orders_collection.find_one({"orderID": int(order_id)})
+            except ValueError:
+                pass
+        return order
+    
+    @staticmethod
     async def create_order(order: OrderCreate) -> Dict[str, Any]:
         """
         Create a new order.

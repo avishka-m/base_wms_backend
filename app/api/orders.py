@@ -5,6 +5,7 @@ from ..auth.dependencies import get_current_active_user, has_role
 from ..models.order import OrderCreate, OrderUpdate, OrderResponse
 from ..services.orders_service import OrdersService
 from ..services.workflow_service import WorkflowService
+from ..services.websocket_service import websocket_manager
 
 router = APIRouter()
 
@@ -137,9 +138,9 @@ async def delete_order(
 @router.put("/{order_id}/status", response_model=OrderResponse)
 async def update_order_status(
     order_id: int,
-    status: str = Query(..., description="New status for the order"),
+    new_status: str = Query(..., description="New status for the order"),
     worker_id: Optional[int] = Query(None, description="ID of the worker to assign to the order"),
-    current_user: Dict[str, Any] = Depends(has_role(["Manager", "Picker", "Packer", "Driver"]))
+    current_user: Dict[str, Any] = Depends(has_role(["Manager", "ReceivingClerk", "receiving_clerk", "Picker", "Packer", "Driver"]))
 ) -> Dict[str, Any]:
     """
     Update the status of an order.
@@ -154,7 +155,20 @@ async def update_order_status(
             detail=f"Order with ID {order_id} not found"
         )
     
-    updated_order = await OrdersService.update_order_status(order_id, status, worker_id)
+    updated_order = await OrdersService.update_order_status(order_id, new_status, worker_id)
+    
+    # Emit WebSocket notification for real-time updates
+    try:
+        await websocket_manager.notify_order_update(
+            order_id=order_id,
+            order_status=new_status,
+            user_roles=["Manager", "ReceivingClerk", "receiving_clerk", "Picker", "Packer", "Driver"]
+        )
+    except Exception as e:
+        # Log the error but don't fail the request
+        import logging
+        logging.getLogger(__name__).error(f"Failed to send WebSocket notification: {e}")
+    
     return updated_order
 
 # Generate picking list

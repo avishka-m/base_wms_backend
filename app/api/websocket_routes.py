@@ -27,7 +27,7 @@ async def websocket_orders_endpoint(
             await websocket.close(code=4001, reason="Authentication failed")
             return
         
-        user_id = str(user.get("worker_id", user.get("id", "unknown")))
+        user_id = str(user.get("workerID", user.get("_id", "unknown")))
         
         # Connect to WebSocket manager
         await websocket_manager.connect(websocket, user_id)

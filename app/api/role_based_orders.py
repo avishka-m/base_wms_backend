@@ -278,3 +278,40 @@ async def get_packer_stats(
     
     stats = RoleBasedService.get_packer_stats()
     return {"success": True, "data": stats}
+
+# Generic order status update endpoint
+@router.put("/orders/{order_id}/status")
+async def update_order_status(
+    order_id: str,
+    new_status: str,
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Update order status (role-based).
+    
+    Allows authorized users to update order status based on their role.
+    """
+    # Check if user has permission to update order status
+    allowed_roles = ["Manager", "Picker", "Packer", "Driver", "ReceivingClerk", "picker", "packer", "driver", "receiving_clerk"]
+    
+    if current_user.get("role") not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Insufficient permissions to update order status"
+        )
+    
+    # Update order status
+    result = RoleBasedService.update_order_status(
+        order_id=order_id,
+        new_status=new_status,
+        worker_id=current_user.get("workerID", current_user.get("id")),
+        current_user=current_user
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Failed to update order status")
+        )
+    
+    return result

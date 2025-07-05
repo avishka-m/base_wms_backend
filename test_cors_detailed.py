@@ -7,6 +7,9 @@ def test_cors_headers():
         ('/', 'Root endpoint'),
         ('/health', 'Health check endpoint'),
         ('/api/v1/workers/', 'Workers endpoint (unauthenticated)'),
+        ('/api/v1/workflow/optimization/analyze', 'Workflow optimization endpoint'),
+        ('/api/v1/workflow/status/overview', 'Workflow status overview endpoint'),
+        ('/api/v1/workflow/active-tasks', 'Workflow active tasks endpoint'),
     ]
     
     for endpoint, description in endpoints:

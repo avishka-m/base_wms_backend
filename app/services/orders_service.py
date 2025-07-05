@@ -132,7 +132,8 @@ class OrdersService:
         """
         orders_collection = get_collection("orders")
         order = orders_collection.find_one({"orderID": order_id})
-        return OrdersService._normalize_order_data(order) if order else order
+        return order
+        # return OrdersService._normalize_order_data(order) if order else order
     
     @staticmethod
     def get_order_by_id(order_id: str) -> Optional[Dict[str, Any]]:

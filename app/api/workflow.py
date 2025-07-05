@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any
 from pydantic import BaseModel
+from datetime import datetime, timedelta
 
 from ..auth.dependencies import get_current_active_user
 from ..services.role_based_service import RoleBasedService
-from ..utils.database import serialize_doc
+from ..utils.database import serialize_doc, get_collection
 
-router = APIRouter(prefix="/workflow", tags=["Workflow"])
+router = APIRouter(tags=["Workflow"])
 
 # Request models
 class WorkflowActionRequest(BaseModel):
@@ -129,8 +130,6 @@ async def get_worker_assignments(
     Get current worker assignments across all workflow stages.
     """
     try:
-        from ..utils.database import get_collection
-        
         orders_collection = get_collection("orders")
         
         # Get orders with assigned workers
@@ -166,9 +165,6 @@ async def get_workflow_metrics(
     Get workflow performance metrics.
     """
     try:
-        from ..utils.database import get_collection
-        from datetime import datetime, timedelta
-        
         orders_collection = get_collection("orders")
         
         # Calculate metrics for the last 7 days
@@ -268,4 +264,165 @@ async def get_next_actions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving next actions: {str(e)}"
+        )
+
+@router.post("/optimization/analyze")
+async def analyze_workflow_optimization(
+    request: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Analyze workflow optimization based on worker roles and current workload.
+    """
+    try:
+        worker_roles = request.get("worker_roles", [])
+        
+        # Mock optimization analysis for now
+        optimization_data = {
+            "efficiency_score": 85.5,
+            "bottlenecks": [
+                {
+                    "stage": "picking",
+                    "severity": "medium",
+                    "description": "Picking stage has 15% slower than average completion time",
+                    "suggested_action": "Reassign 2 workers from packing to picking during peak hours"
+                },
+                {
+                    "stage": "packing", 
+                    "severity": "low",
+                    "description": "Packing capacity underutilized by 8%",
+                    "suggested_action": "Consider reducing packing staff during low-volume periods"
+                }
+            ],
+            "recommendations": [
+                {
+                    "type": "resource_allocation",
+                    "priority": "high",
+                    "description": "Redistribute workers to balance workload",
+                    "expected_improvement": "12% efficiency increase"
+                },
+                {
+                    "type": "process_improvement",
+                    "priority": "medium", 
+                    "description": "Implement batch picking for small orders",
+                    "expected_improvement": "8% time reduction"
+                }
+            ],
+            "analyzed_at": datetime.utcnow().isoformat()
+        }
+        
+        return {
+            "success": True,
+            "data": optimization_data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing workflow optimization: {str(e)}"
+        )
+
+@router.get("/status/overview")
+async def get_workflow_status_overview(
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Get workflow status overview with current statistics.
+    """
+    try:
+        # Mock status overview for now
+        status_data = {
+            "total_active_orders": 45,
+            "orders_by_stage": {
+                "pending": 8,
+                "receiving": 5,
+                "picking": 12,
+                "packing": 10,
+                "shipping": 7,
+                "delivered": 3
+            },
+            "worker_utilization": {
+                "receiving_clerks": {"active": 2, "total": 3, "utilization": 67},
+                "pickers": {"active": 4, "total": 6, "utilization": 83},
+                "packers": {"active": 3, "total": 4, "utilization": 75},
+                "drivers": {"active": 2, "total": 3, "utilization": 67}
+            },
+            "completion_times": {
+                "average_order_time": "4.2 hours",
+                "picking_time": "45 minutes",
+                "packing_time": "25 minutes",
+                "shipping_time": "2.1 hours"
+            },
+            "alerts": [
+                {
+                    "type": "warning",
+                    "message": "Picking queue above normal capacity",
+                    "count": 12
+                }
+            ],
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        return {
+            "success": True,
+            "data": status_data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting workflow status overview: {str(e)}"
+        )
+
+@router.get("/active-tasks")
+async def get_active_workflow_tasks(
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Get currently active workflow tasks across all stages.
+    """
+    try:
+        # Mock active tasks for now
+        active_tasks = [
+            {
+                "task_id": "task_001",
+                "order_id": "12345",
+                "stage": "picking",
+                "worker_id": 3,
+                "worker_name": "Alice Picker",
+                "started_at": datetime.utcnow().isoformat(),
+                "estimated_completion": "15 minutes",
+                "status": "in_progress",
+                "priority": "high"
+            },
+            {
+                "task_id": "task_002", 
+                "order_id": "12346",
+                "stage": "packing",
+                "worker_id": 4,
+                "worker_name": "Bob Packer",
+                "started_at": datetime.utcnow().isoformat(),
+                "estimated_completion": "10 minutes",
+                "status": "in_progress",
+                "priority": "medium"
+            },
+            {
+                "task_id": "task_003",
+                "order_id": "12347", 
+                "stage": "receiving",
+                "worker_id": 2,
+                "worker_name": "Carol Receiver",
+                "started_at": datetime.utcnow().isoformat(),
+                "estimated_completion": "30 minutes",
+                "status": "in_progress",
+                "priority": "low"
+            }
+        ]
+        
+        return {
+            "success": True,
+            "data": active_tasks
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting active workflow tasks: {str(e)}"
         )

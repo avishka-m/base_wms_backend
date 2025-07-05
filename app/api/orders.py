@@ -137,7 +137,7 @@ async def delete_order(
 @router.put("/{order_id}/status", response_model=OrderResponse)
 async def update_order_status(
     order_id: int,
-    status: str = Query(..., description="New status for the order"),
+    new_status: str = Query(..., description="New status for the order"),
     worker_id: Optional[int] = Query(None, description="ID of the worker to assign to the order"),
     current_user: Dict[str, Any] = Depends(has_role(["Manager", "Picker", "Packer", "Driver"]))
 ) -> Dict[str, Any]:
@@ -154,7 +154,7 @@ async def update_order_status(
             detail=f"Order with ID {order_id} not found"
         )
     
-    updated_order = await OrdersService.update_order_status(order_id, status, worker_id)
+    updated_order = await OrdersService.update_order_status(order_id, new_status, worker_id)
     return updated_order
 
 # Generate picking list

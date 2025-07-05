@@ -18,6 +18,7 @@ from .predictions import router as predictions_router
 from .workflow import router as workflow_router
 from .role_based_orders import router as role_based_router
 from .enhanced_chatbot_routes import router as chatbot_router  # Enhanced chatbot with persistent storage
+from .websocket_routes import router as websocket_router
 
 # Create main API router
 api_router = APIRouter()
@@ -40,3 +41,4 @@ api_router.include_router(predictions_router, prefix="/predictions", tags=["AI P
 api_router.include_router(role_based_router, prefix="/role-based", tags=["Role-Based Operations"])
 api_router.include_router(workflow_router, prefix="/workflow", tags=["Workflow Management"])
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot Enhanced"])  # Enhanced chatbot with persistent storage
+api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates

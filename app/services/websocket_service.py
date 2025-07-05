@@ -3,12 +3,23 @@ WebSocket service for real-time order updates
 """
 import json
 import asyncio
+from datetime import datetime
 from typing import Dict, List, Set
 from fastapi import WebSocket, WebSocketDisconnect
+from bson import ObjectId
 from ..auth.dependencies import get_current_user_from_token
 import logging
 
 logger = logging.getLogger(__name__)
+
+class CustomJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle MongoDB ObjectId and datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 class OrderUpdateWebSocketManager:
     def __init__(self):
@@ -80,16 +91,27 @@ class OrderUpdateWebSocketManager:
     
     async def notify_order_update(self, order_id: int, order_status: str, user_roles: List[str] = None):
         """Notify relevant users about order updates"""
+        # Import here to avoid circular imports
+        from ..services.orders_service import OrdersService
+        
+        # Fetch complete order data
+        try:
+            order_data = await OrdersService.get_order(order_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch order data for WebSocket notification: {e}")
+            order_data = None
+        
         message = {
             "type": "order_update",
             "data": {
                 "order_id": order_id,
                 "order_status": order_status,
+                "order_data": order_data,
                 "timestamp": asyncio.get_event_loop().time()
             }
         }
         
-        message_json = json.dumps(message)
+        message_json = json.dumps(message, cls=CustomJSONEncoder)
         
         if user_roles:
             await self.broadcast_to_roles(message_json, user_roles)

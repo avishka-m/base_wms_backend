@@ -88,7 +88,7 @@ class PackerAgent(BaseAgent):
         # Default case
         return f"{query}\n\nAs a warehouse packer, I need to efficiently package items for shipping while ensuring they're protected during transit."
         
-    def run(self, query: str) -> str:
+    async def run(self, query: str) -> str:
         """
         Run the packer agent on a user query with enhanced context.
         
@@ -102,4 +102,4 @@ class PackerAgent(BaseAgent):
         enhanced_query = self.enhance_query(query)
         
         # Run the agent with the enhanced query
-        return super().run(enhanced_query)
+        return await super().run(enhanced_query)

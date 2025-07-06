@@ -91,7 +91,7 @@ class DriverAgent(BaseAgent):
         # Default case
         return f"{query}\n\nAs a warehouse delivery driver, I need to efficiently deliver packages to customers while adhering to safety protocols and delivery schedules."
     
-    def run(self, query: str) -> str:
+    async def run(self, query: str) -> str:
         """
         Run the driver agent on a user query with enhanced context.
         
@@ -105,4 +105,4 @@ class DriverAgent(BaseAgent):
         enhanced_query = self.enhance_query(query)
         
         # Run the agent with the enhanced query
-        return super().run(enhanced_query)
+        return await super().run(enhanced_query)

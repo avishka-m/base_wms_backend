@@ -634,7 +634,7 @@ class EnhancedAgentService:
             logger.info(f"Processing message with {role} agent: {message[:100]}...")
             
             # Process the message with the agent
-            response = agent.run(message)
+            response = await agent.run(message)
             
             # Calculate processing time
             processing_time = (datetime.utcnow() - start_time).total_seconds()

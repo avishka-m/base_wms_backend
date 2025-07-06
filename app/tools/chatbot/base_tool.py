@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 from typing import Dict, Any, List, Optional, Type, Callable
 from pydantic import BaseModel, create_model, Field
 
@@ -70,10 +72,37 @@ def create_tool(name: str, description: str, function: Callable,
     
     args_schema = create_model(f"{name.capitalize()}Schema", **fields)
     
+    # Check if the function is async
+    is_async = inspect.iscoroutinefunction(function)
+    
     # Create tool class
     class CustomTool(WMSBaseTool):
         def _run(self, **kwargs):
-            return function(**kwargs)
+            if is_async:
+                # If the function is async but we're in sync context, run in event loop
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If event loop is already running, we need to create a new task
+                        # This is a fallback for when called from sync context in an async environment
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, function(**kwargs))
+                            return future.result()
+                    else:
+                        return loop.run_until_complete(function(**kwargs))
+                except RuntimeError:
+                    # No event loop, create one
+                    return asyncio.run(function(**kwargs))
+            else:
+                return function(**kwargs)
+        
+        async def _arun(self, **kwargs):
+            if is_async:
+                return await function(**kwargs)
+            else:
+                # Run sync function in thread pool to avoid blocking
+                return await asyncio.get_event_loop().run_in_executor(None, lambda: function(**kwargs))
     
     # Instantiate and return tool
     return CustomTool(name=name, description=description, args_schema=args_schema)

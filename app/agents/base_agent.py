@@ -6,7 +6,6 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.tools import BaseTool
-from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain.schema import SystemMessage as LCSystemMessage
@@ -16,6 +15,7 @@ from langsmith import traceable
 
 from app.config import OPENAI_API_KEY, LLM_MODEL, LLM_TEMPERATURE, ROLES
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.services.chatbot.conversation_memory_service import conversation_memory_service
 
 class BaseAgent:
     """Base agent for all warehouse roles."""
@@ -52,14 +52,11 @@ class BaseAgent:
         # Each agent subclass will override this with direct tool imports
         self.tools = []
         
-        # Initialize memory for conversation history
-        self.memory = ConversationBufferMemory(return_messages=True)
-        
         # Build the system prompt
         self.system_prompt = self._build_system_prompt()
         
-        # Create the agent executor once tools are set
-        self.agent_executor = None  # Will be created after tools are set
+        # Agent executor will be created dynamically with conversation context
+        self._agent_executor_cache = {}  # Cache for conversation-specific executors
     
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent based on role and tools."""
@@ -83,10 +80,21 @@ class BaseAgent:
 
         return system_message
 
-    def _create_agent_executor(self) -> AgentExecutor:
-        """Create the LangChain agent executor with appropriate tools and knowledge."""
+    async def _create_agent_executor(
+        self, 
+        conversation_id: str, 
+        user_id: str
+    ) -> AgentExecutor:
+        """Create the LangChain agent executor with appropriate tools and conversation memory."""
         if not self.tools:
             raise ValueError(f"No tools defined for {self.role} agent. Add tools before creating the agent executor.")
+        
+        # Get conversation memory from the memory service
+        memory = await conversation_memory_service.get_memory(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            agent_role=self.role
+        )
             
         # Create the prompt template with the correct variable name (history)
         prompt = ChatPromptTemplate.from_messages([
@@ -103,7 +111,7 @@ class BaseAgent:
         return AgentExecutor(
             agent=agent,
             tools=self.tools,
-            memory=self.memory,
+            memory=memory,
             verbose=True,
             handle_parsing_errors=True,
             max_iterations=5,  # Prevent infinite loops
@@ -111,12 +119,19 @@ class BaseAgent:
         )
 
     @traceable(name="agent_run", run_type="chain")
-    def run(self, query: str) -> str:
+    async def run(
+        self, 
+        query: str, 
+        conversation_id: str = "default", 
+        user_id: str = "anonymous"
+    ) -> str:
         """
-        Run the agent on a user query.
+        Run the agent on a user query with conversation memory.
         
         Args:
             query: User query string
+            conversation_id: Unique conversation identifier for memory persistence
+            user_id: User identifier for memory management
             
         Returns:
             Agent response string
@@ -125,12 +140,17 @@ class BaseAgent:
             # Check if LLM is available
             if self.llm is None:
                 return f"Mock response for {self.role}: {query}"
+            
+            # Get or create agent executor with conversation memory
+            executor_key = f"{conversation_id}:{user_id}"
+            
+            if executor_key not in self._agent_executor_cache:
+                agent_executor = await self._create_agent_executor(conversation_id, user_id)
+                self._agent_executor_cache[executor_key] = agent_executor
+            else:
+                agent_executor = self._agent_executor_cache[executor_key]
                 
-            # Create agent executor if not yet created
-            if self.agent_executor is None and self.tools:
-                self.agent_executor = self._create_agent_executor()
-                
-            if not self.agent_executor:
+            if not agent_executor:
                 return f"Error: Agent for role '{self.role}' is not properly initialized with tools."
             
             # Enhance the query with role-specific context
@@ -147,17 +167,30 @@ class BaseAgent:
             # Add metadata for LangSmith tracing
             metadata = {
                 "role": self.role,
+                "conversation_id": conversation_id,
+                "user_id": user_id,
                 "query_type": self._classify_query_type(query),
                 "has_kb_results": len(kb_results) > 0,
                 "kb_results_count": len(kb_results)
             }
             
-            # Run the agent with tracing enabled
-            result = self.agent_executor.invoke(
+            # Run the agent with async execution and tracing enabled
+            result = await agent_executor.ainvoke(
                 {"input": enriched_query},
                 config={"metadata": metadata} if self.tracing_enabled else {}
             )
+            
+            # Save the conversation to memory service
+            await conversation_memory_service.add_message(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                user_message=query,  # Use original query, not enhanced
+                ai_response=result["output"],
+                agent_role=self.role
+            )
+            
             return result["output"]
+            
         except Exception as e:
             # Provide helpful error message if agent fails
             import traceback

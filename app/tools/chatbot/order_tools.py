@@ -3,125 +3,205 @@ from pydantic import BaseModel, Field
 
 # Use absolute imports instead of relative imports
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
-from app.utils.chatbot.api_client import api_client
+from app.utils.chatbot.api_client import async_api_client
 from app.utils.chatbot.knowledge_base import knowledge_base
-from app.utils.chatbot.demo_data import get_demo_orders, get_demo_workers, is_api_error
+from app.utils.chatbot.demo_data import get_demo_order_data, is_api_error
 
 # Define order query tool
-def check_order_func(order_id: int) -> str:
-    """Check the status and details of a specific order."""
-    try:
-        order = api_client.get_order(order_id)
-        
-        # Check if we got an error response - use demo data as fallback
-        if is_api_error(order):
-            demo_orders = get_demo_orders(order_id=order_id)
+async def order_query_func(order_id: Optional[int] = None,
+                     customer_id: Optional[int] = None,
+                     status: Optional[str] = None,
+                     priority: Optional[str] = None,
+                     date_from: Optional[str] = None,
+                     date_to: Optional[str] = None) -> str:
+    """Query orders based on various criteria."""
+    params = {}
+    
+    # Add non-None parameters to query
+    if order_id is not None:
+        # If order_id is provided, do a direct lookup
+        try:
+            order = await async_api_client.get_order(order_id)
+            
+            # Check if we got an error response - use demo data as fallback
+            if is_api_error(order):
+                demo_orders = get_demo_order_data(order_id=order_id)
+                if demo_orders:
+                    order = demo_orders[0]
+                    note = " (Demo data - API not accessible)"
+                else:
+                    return f"Order with ID {order_id} not found in demo data."
+            else:
+                note = ""
+            
+            # Format single order response
+            result = f"Found order{note}:\n\n"
+            result += f"Order ID: {order.get('id')}\n"
+            result += f"Customer ID: {order.get('customer_id')}\n"
+            result += f"Status: {order.get('status')}\n"
+            result += f"Priority: {order.get('priority', 'Normal')}\n"
+            result += f"Total Amount: ${order.get('total_amount', 'N/A')}\n"
+            result += f"Created: {order.get('created_at', 'N/A')}\n"
+            result += f"Shipping Address: {order.get('shipping_address', 'N/A')}\n"
+            
+            # Add order items if available
+            items = order.get('items', [])
+            if items:
+                result += f"\nOrder Items ({len(items)}):\n"
+                for item in items:
+                    result += f"- {item.get('name', 'Unknown')} (Qty: {item.get('quantity', 0)})\n"
+            
+            return result
+        except Exception as e:
+            # Fallback to demo data on exception
+            demo_orders = get_demo_order_data(order_id=order_id)
             if demo_orders:
                 order = demo_orders[0]
-                note = " (Demo data - API not accessible)"
+                result = "Found order (Demo data - API error):\n\n"
+                result += f"Order ID: {order.get('id')}\n"
+                result += f"Customer ID: {order.get('customer_id')}\n"
+                result += f"Status: {order.get('status')}\n"
+                result += f"Priority: {order.get('priority', 'Normal')}\n"
+                result += f"Total Amount: ${order.get('total_amount', 'N/A')}\n"
+                result += f"Created: {order.get('created_at', 'N/A')}\n"
+                return result
             else:
-                return f"Order with ID {order_id} not found in demo data."
+                return f"Error retrieving order: {str(e)}"
+            
+    # Build filter parameters
+    if customer_id:
+        params["customer_id"] = customer_id
+    if status:
+        params["status"] = status
+    if priority:
+        params["priority"] = priority
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
+        
+    try:
+        orders = await async_api_client.get_orders(params)
+        
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(orders):
+            orders = get_demo_order_data(
+                customer_id=customer_id, status=status, priority=priority
+            )
+            note = " (Demo data - API not accessible)"
         else:
             note = ""
+        
+        if not orders:
+            return "No orders found matching your criteria."
             
-        # Format the response
-        result = f"Order Details for Order #{order_id}{note}:\n\n"
-        result += f"Status: {order.get('status')}\n"
-        result += f"Customer: {order.get('customer_name')} (ID: {order.get('customer_id')})\n"
-        result += f"Created: {order.get('created_at')}\n"
-        result += f"Updated: {order.get('updated_at')}\n"
-        result += f"Total Items: {len(order.get('items', []))}\n"
-        result += f"Total Value: ${order.get('total_value')}\n\n"
-        
-        # Order items
-        result += "Order Items:\n"
-        result += "-" * 50 + "\n"
-        
-        for item in order.get('items', []):
-            result += f"- {item.get('quantity')}x {item.get('item_name')} (SKU: {item.get('sku')})\n"
-            result += f"  Price: ${item.get('unit_price')} each, Subtotal: ${item.get('subtotal')}\n"
-            result += f"  Status: {item.get('status')}\n"
-        
-        result += "-" * 50 + "\n\n"
-        
-        # Related tasks
-        if order.get('picking_tasks'):
-            result += "Picking Tasks:\n"
-            for task in order.get('picking_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Created: {task.get('created_at')}\n"
-            result += "\n"
-            
-        if order.get('packing_tasks'):
-            result += "Packing Tasks:\n"
-            for task in order.get('packing_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Created: {task.get('created_at')}\n"
-            result += "\n"
-            
-        if order.get('shipping_tasks'):
-            result += "Shipping Tasks:\n"
-            for task in order.get('shipping_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Vehicle: {task.get('vehicle_name')} (ID: {task.get('vehicle_id')})\n"
-                result += f"  Created: {task.get('created_at')}\n"
+        # Format the results
+        result = f"Found the following orders{note}:\n\n"
+        for order in orders:
+            result += f"Order ID: {order.get('id')}\n"
+            result += f"Customer ID: {order.get('customer_id')}\n"
+            result += f"Status: {order.get('status')}\n"
+            result += f"Priority: {order.get('priority', 'Normal')}\n"
+            result += f"Total: ${order.get('total_amount', 'N/A')}\n"
+            result += f"Created: {order.get('created_at', 'N/A')}\n"
+            result += "-" * 40 + "\n"
             
         return result
     except Exception as e:
         # Fallback to demo data on exception
-        demo_orders = get_demo_orders(order_id=order_id)
-        if demo_orders:
-            order = demo_orders[0]
-            result = f"Order Details for Order #{order_id} (Demo data - API error):\n\n"
-            result += f"Status: {order.get('status')}\n"
-            result += f"Customer: {order.get('customer_name')} (ID: {order.get('customer_id')})\n"
-            result += f"Created: {order.get('created_at')}\n"
-            result += f"Updated: {order.get('updated_at')}\n"
-            result += f"Total Items: {len(order.get('items', []))}\n"
-            result += f"Total Value: ${order.get('total_value')}\n\n"
+        try:
+            orders = get_demo_order_data(
+                customer_id=customer_id, status=status, priority=priority
+            )
+            if not orders:
+                return "No orders found matching your criteria."
             
-            # Order items
-            result += "Order Items:\n"
-            result += "-" * 50 + "\n"
+            result = "Found the following orders (Demo data - API error):\n\n"
+            for order in orders:
+                result += f"Order ID: {order.get('id')}\n"
+                result += f"Customer ID: {order.get('customer_id')}\n"
+                result += f"Status: {order.get('status')}\n"
+                result += f"Priority: {order.get('priority', 'Normal')}\n"
+                result += f"Total: ${order.get('total_amount', 'N/A')}\n"
+                result += f"Created: {order.get('created_at', 'N/A')}\n"
+                result += "-" * 40 + "\n"
             
-            for item in order.get('items', []):
-                result += f"- {item.get('quantity')}x {item.get('item_name')} (SKU: {item.get('sku')})\n"
-                result += f"  Price: ${item.get('unit_price')} each, Subtotal: ${item.get('subtotal')}\n"
-                result += f"  Status: {item.get('status')}\n"
-            
-            result += "-" * 50 + "\n\n"
-            
-            # Related tasks
-            if order.get('picking_tasks'):
-                result += "Picking Tasks:\n"
-                for task in order.get('picking_tasks'):
-                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                    result += f"  Assigned to: {task.get('worker_name')}\n"
-                    result += f"  Created: {task.get('created_at')}\n"
-                result += "\n"
-                
-            if order.get('packing_tasks'):
-                result += "Packing Tasks:\n"
-                for task in order.get('packing_tasks'):
-                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                    result += f"  Assigned to: {task.get('worker_name')}\n"
-                    result += f"  Created: {task.get('created_at')}\n"
-                result += "\n"
-                
-            if order.get('shipping_tasks'):
-                result += "Shipping Tasks:\n"
-                for task in order.get('shipping_tasks'):
-                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                    result += f"  Assigned to: {task.get('worker_name')}\n"
-                    result += f"  Vehicle: {task.get('vehicle_name')} (ID: {task.get('vehicle_id')})\n"
-                    result += f"  Created: {task.get('created_at')}\n"
-                
             return result
-        else:
-            return f"Error retrieving order: {str(e)}"
+        except:
+            return f"Error querying orders: {str(e)}"
+
+# Define order create tool
+async def order_create_func(customer_id: int,
+                      items: List[Dict[str, Any]],
+                      shipping_address: str,
+                      priority: Optional[str] = "normal",
+                      notes: Optional[str] = None) -> str:
+    """Create a new order."""
+    # Validate required data
+    if not items:
+        return "Error: At least one item is required to create an order."
+    
+    # Prepare the order data
+    order_data = {
+        "customer_id": customer_id,
+        "items": items,
+        "shipping_address": shipping_address,
+        "priority": priority,
+        "status": "pending"
+    }
+    
+    if notes:
+        order_data["notes"] = notes
+        
+    try:
+        # Create the order
+        response = await async_api_client.post("orders", order_data)
+        
+        if is_api_error(response):
+            return f"Error creating order: {response.get('error', 'Unknown error')}"
+        
+        return f"Successfully created order: {response.get('id')} for customer {customer_id}"
+    except Exception as e:
+        return f"Error creating order: {str(e)}"
+
+# Define order update tool
+async def order_update_func(order_id: int,
+                      status: Optional[str] = None,
+                      priority: Optional[str] = None,
+                      shipping_address: Optional[str] = None,
+                      notes: Optional[str] = None) -> str:
+    """Update an existing order."""
+    # First, verify the order exists
+    try:
+        existing_order = await async_api_client.get_order(order_id)
+        if is_api_error(existing_order):
+            return f"Error: Could not find order with ID {order_id}: {existing_order.get('error', 'Unknown error')}"
+    except Exception as e:
+        return f"Error: Could not find order with ID {order_id}: {str(e)}"
+        
+    # Prepare update data with only the fields that are provided
+    update_data = {}
+    if status:
+        update_data["status"] = status
+    if priority:
+        update_data["priority"] = priority
+    if shipping_address:
+        update_data["shipping_address"] = shipping_address
+    if notes:
+        update_data["notes"] = notes
+        
+    if not update_data:
+        return "No update data provided. Please specify at least one field to update."
+        
+    try:
+        response = await async_api_client.put("orders", order_id, update_data)
+        
+        if is_api_error(response):
+            return f"Error updating order: {response.get('error', 'Unknown error')}"
+        
+        return f"Successfully updated order {order_id}"
+    except Exception as e:
+        return f"Error updating order: {str(e)}"
 
 # Define create sub-order tool
 def create_sub_order_func(parent_order_id: int, 
@@ -130,7 +210,7 @@ def create_sub_order_func(parent_order_id: int,
     """Create a sub-order for partial fulfillment of a parent order."""
     try:
         # First check if the parent order exists
-        parent_order = api_client.get_order(parent_order_id)
+        parent_order = async_api_client.get_order(parent_order_id)
         if not parent_order:
             return f"Error: Parent order {parent_order_id} does not exist."
         
@@ -143,7 +223,7 @@ def create_sub_order_func(parent_order_id: int,
         }
         
         # Submit the sub-order
-        response = api_client.post("orders", sub_order_data)
+        response = async_api_client.post("orders", sub_order_data)
         
         return f"Successfully created sub-order {response.get('id')} for parent order {parent_order_id}."
         
@@ -155,7 +235,7 @@ def approve_orders_func(order_id: int, approved: bool, notes: Optional[str] = No
     """Approve or reject an order."""
     try:
         # Check if the order exists
-        order = api_client.get_order(order_id)
+        order = async_api_client.get_order(order_id)
         if not order:
             return f"Error: Order {order_id} does not exist."
             
@@ -169,7 +249,7 @@ def approve_orders_func(order_id: int, approved: bool, notes: Optional[str] = No
             approval_data["approval_notes"] = notes
             
         # Update the order
-        response = api_client.put("orders", order_id, approval_data)
+        response = async_api_client.put("orders", order_id, approval_data)
         
         if approved:
             return f"Successfully approved order {order_id}. New status: Processing."
@@ -187,12 +267,12 @@ def create_picking_task_func(order_id: int,
     """Create a picking task for an order."""
     try:
         # Check if the order exists
-        order = api_client.get_order(order_id)
+        order = async_api_client.get_order(order_id)
         if not order:
             return f"Error: Order {order_id} does not exist."
             
         # Check if a picking task already exists
-        existing_tasks = api_client.get("picking", {"order_id": order_id})
+        existing_tasks = async_api_client.get("picking", {"order_id": order_id})
         if existing_tasks:
             return f"A picking task already exists for order {order_id}: Task ID {existing_tasks[0].get('id')}"
             
@@ -204,7 +284,7 @@ def create_picking_task_func(order_id: int,
         
         if worker_id:
             # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
+            worker = async_api_client.get_by_id("workers", worker_id)
             if not worker:
                 return f"Error: Worker {worker_id} does not exist."
             task_data["worker_id"] = worker_id
@@ -219,7 +299,7 @@ def create_picking_task_func(order_id: int,
             task_data["notes"] = notes
             
         # Create the picking task
-        response = api_client.post("picking", task_data)
+        response = async_api_client.post("picking", task_data)
         
         return f"Successfully created picking task {response.get('id')} for order {order_id}."
         
@@ -234,7 +314,7 @@ def update_picking_task_func(task_id: int,
     """Update the status of a picking task."""
     try:
         # Check if the task exists
-        task = api_client.get_by_id("picking", task_id)
+        task = async_api_client.get_by_id("picking", task_id)
         if not task:
             return f"Error: Picking task {task_id} does not exist."
             
@@ -249,7 +329,7 @@ def update_picking_task_func(task_id: int,
             
         if worker_id:
             # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
+            worker = async_api_client.get_by_id("workers", worker_id)
             if not worker:
                 return f"Error: Worker {worker_id} does not exist."
             update_data["worker_id"] = worker_id
@@ -262,7 +342,7 @@ def update_picking_task_func(task_id: int,
             return "No update fields provided. Please specify at least one field to update."
             
         # Update the picking task
-        response = api_client.put("picking", task_id, update_data)
+        response = async_api_client.put("picking", task_id, update_data)
         
         # If status is set to completed, trigger creation of a packing task
         if status and status.lower() == "completed":
@@ -272,7 +352,7 @@ def update_picking_task_func(task_id: int,
                 "order_id": order_id,
                 "status": "Pending"
             }
-            packing_response = api_client.post("packing", packing_data)
+            packing_response = async_api_client.post("packing", packing_data)
             return f"Successfully updated picking task {task_id}. Status changed to completed. Packing task {packing_response.get('id')} created automatically."
             
         return f"Successfully updated picking task {task_id}."
@@ -288,17 +368,17 @@ def create_packing_task_func(order_id: int,
     """Create a packing task for an order."""
     try:
         # Check if the order exists
-        order = api_client.get_order(order_id)
+        order = async_api_client.get_order(order_id)
         if not order:
             return f"Error: Order {order_id} does not exist."
             
         # Check if a packing task already exists
-        existing_tasks = api_client.get("packing", {"order_id": order_id})
+        existing_tasks = async_api_client.get("packing", {"order_id": order_id})
         if existing_tasks:
             return f"A packing task already exists for order {order_id}: Task ID {existing_tasks[0].get('id')}"
             
         # Check if a picking task has been completed
-        picking_tasks = api_client.get("picking", {"order_id": order_id})
+        picking_tasks = async_api_client.get("picking", {"order_id": order_id})
         if not picking_tasks:
             return f"Error: No picking task exists for order {order_id}. Create a picking task first."
             
@@ -313,7 +393,7 @@ def create_packing_task_func(order_id: int,
         
         if worker_id:
             # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
+            worker = async_api_client.get_by_id("workers", worker_id)
             if not worker:
                 return f"Error: Worker {worker_id} does not exist."
             task_data["worker_id"] = worker_id
@@ -328,7 +408,7 @@ def create_packing_task_func(order_id: int,
             task_data["notes"] = notes
             
         # Create the packing task
-        response = api_client.post("packing", task_data)
+        response = async_api_client.post("packing", task_data)
         
         return f"Successfully created packing task {response.get('id')} for order {order_id}."
         
@@ -343,7 +423,7 @@ def update_packing_task_func(task_id: int,
     """Update the status of a packing task."""
     try:
         # Check if the task exists
-        task = api_client.get_by_id("packing", task_id)
+        task = async_api_client.get_by_id("packing", task_id)
         if not task:
             return f"Error: Packing task {task_id} does not exist."
             
@@ -358,7 +438,7 @@ def update_packing_task_func(task_id: int,
             
         if worker_id:
             # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
+            worker = async_api_client.get_by_id("workers", worker_id)
             if not worker:
                 return f"Error: Worker {worker_id} does not exist."
             update_data["worker_id"] = worker_id
@@ -371,7 +451,7 @@ def update_packing_task_func(task_id: int,
             return "No update fields provided. Please specify at least one field to update."
             
         # Update the packing task
-        response = api_client.put("packing", task_id, update_data)
+        response = async_api_client.put("packing", task_id, update_data)
         
         # If status is set to completed, trigger creation of a shipping task
         if status and status.lower() == "completed":
@@ -381,7 +461,7 @@ def update_packing_task_func(task_id: int,
                 "order_id": order_id,
                 "status": "Pending"
             }
-            shipping_response = api_client.post("shipping", shipping_data)
+            shipping_response = async_api_client.post("shipping", shipping_data)
             return f"Successfully updated packing task {task_id}. Status changed to completed. Shipping task {shipping_response.get('id')} created automatically."
             
         return f"Successfully updated packing task {task_id}."
@@ -393,11 +473,31 @@ def update_packing_task_func(task_id: int,
 check_order_tool = create_tool(
     name="check_order",
     description="Check the status and details of a specific order",
-    function=check_order_func,
+    function=order_query_func,
     arg_descriptions={
         "order_id": {
-            "type": int, 
+            "type": Optional[int], 
             "description": "ID of the order to check"
+        },
+        "customer_id": {
+            "type": Optional[int], 
+            "description": "ID of the customer associated with the order"
+        },
+        "status": {
+            "type": Optional[str], 
+            "description": "Status of the order"
+        },
+        "priority": {
+            "type": Optional[str], 
+            "description": "Priority level of the order"
+        },
+        "date_from": {
+            "type": Optional[str], 
+            "description": "Start date for order query"
+        },
+        "date_to": {
+            "type": Optional[str], 
+            "description": "End date for order query"
         }
     }
 )

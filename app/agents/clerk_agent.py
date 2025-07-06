@@ -33,10 +33,6 @@ class ClerkAgent(BaseAgent):
         # Re-build the system prompt with the tools
         self.system_prompt = self._build_system_prompt()
         
-        # Create the agent executor with the updated tools
-        if self.llm is not None:
-            self.agent_executor = self._create_agent_executor()
-        
     def get_receiving_procedures(self) -> str:
         """
         Get receiving procedures from the knowledge base.
@@ -101,12 +97,19 @@ class ClerkAgent(BaseAgent):
         # Default case: return with basic role context
         return f"{query}\n\nAs a warehouse clerk, I need to provide accurate information about inventory, orders, returns, and receiving processes."
     
-    def run(self, query: str) -> str:
+    async def run(
+        self, 
+        query: str, 
+        conversation_id: str = "default", 
+        user_id: str = "anonymous"
+    ) -> str:
         """
         Run the clerk agent on a user query with enhanced context.
         
         Args:
             query: User query string
+            conversation_id: Unique conversation identifier for memory persistence
+            user_id: User identifier for memory management
             
         Returns:
             Agent response string
@@ -115,4 +118,4 @@ class ClerkAgent(BaseAgent):
         enhanced_query = self.enhance_query(query)
         
         # Run the agent with the enhanced query
-        return super().run(enhanced_query)
+        return await super().run(enhanced_query, conversation_id, user_id)

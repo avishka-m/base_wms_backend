@@ -28,6 +28,7 @@ class EnhancedConversationService:
     def __init__(self):
         """Initialize the enhanced conversation service."""
         self._collections_initialized = False
+        self._context_service = None
     
     async def _ensure_collections_and_indexes(self):
         """Ensure database collections and indexes are set up."""
@@ -79,6 +80,60 @@ class EnhancedConversationService:
         except Exception as e:
             logger.error(f"Failed to initialize database collections: {str(e)}")
             raise
+    
+    def _get_context_service(self):
+        """Get or initialize the context awareness service."""
+        if self._context_service is None:
+            try:
+                from app.services.chatbot.context_awareness_service import ContextAwarenessService
+                self._context_service = ContextAwarenessService()
+            except ImportError:
+                logger.warning("Context awareness service not available")
+                self._context_service = None
+        return self._context_service
+    
+    async def enrich_response_with_context(
+        self,
+        user_id: str,
+        message: str,
+        base_response: str,
+        conversation_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Enrich AI response with contextual information.
+        
+        Args:
+            user_id: User identifier
+            message: User message
+            base_response: Base AI response
+            conversation_context: Current conversation context
+            
+        Returns:
+            Enriched response with context
+        """
+        try:
+            context_service = self._get_context_service()
+            if context_service:
+                return await context_service.get_context_enriched_response(
+                    user_id=user_id,
+                    message=message,
+                    base_response=base_response,
+                    conversation_context=conversation_context
+                )
+            else:
+                # Fallback if context service is not available
+                return {
+                    "response": base_response,
+                    "context": {},
+                    "suggestions": []
+                }
+        except Exception as e:
+            logger.error(f"Failed to enrich response with context: {str(e)}")
+            return {
+                "response": base_response,
+                "context": {},
+                "suggestions": []
+            }
     
     async def create_conversation(
         self,
@@ -430,7 +485,7 @@ class EnhancedConversationService:
                 }
             )
             
-            if result.modified_count > 0:
+            if hasattr(result, 'modified_count') and result.modified_count > 0:
                 # Log audit event
                 await self._log_audit_event(
                     user_id=user_id,
@@ -503,7 +558,7 @@ class EnhancedConversationService:
                     }
                 )
             
-            if result.modified_count > 0 or (hard_delete and result.deleted_count > 0):
+            if (hasattr(result, 'modified_count') and result.modified_count > 0) or (hard_delete and hasattr(result, 'deleted_count') and result.deleted_count > 0):
                 # Log audit event
                 await self._log_audit_event(
                     user_id=user_id,
@@ -597,9 +652,12 @@ class EnhancedConversationService:
         try:
             conversations_col = await get_async_collection("chat_conversations")
             
+            # Separate $set and $inc operations
             update_data = {
-                "updated_at": datetime.utcnow(),
-                "last_message_at": datetime.utcnow(),
+                "$set": {
+                    "updated_at": datetime.utcnow(),
+                    "last_message_at": datetime.utcnow()
+                },
                 "$inc": {
                     "message_count": 1,
                     "total_tokens_used": tokens_used

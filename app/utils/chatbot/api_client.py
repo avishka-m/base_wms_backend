@@ -1,12 +1,14 @@
 import requests
+import logging
 from typing import Dict, Any, List, Optional
-
 
 # Use absolute import for chatbot config
 from app.config import (
     WMS_API_BASE_URL,
     API_ENDPOINTS
 )
+
+logger = logging.getLogger("wms_chatbot.api_client")
 
 class APIClient:
     """
@@ -18,6 +20,7 @@ class APIClient:
         """Initialize the API client."""
         self.base_url = WMS_API_BASE_URL
         self.endpoints = API_ENDPOINTS
+        logger.info(f"API Client initialized with base URL: {self.base_url}")
     
     def get_headers(self) -> Dict[str, str]:
         """
@@ -44,7 +47,8 @@ class APIClient:
         if endpoint not in self.endpoints:
             raise ValueError(f"Unknown endpoint: {endpoint}")
         
-        url = self.endpoints[endpoint]
+        url = self.base_url + self.endpoints[endpoint]
+        logger.debug(f"GET request URL: {url} with params: {params}")
         
         try:
             response = requests.get(
@@ -56,7 +60,7 @@ class APIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"API error (GET): {e}")
+            logger.error(f"API error (GET): {e}")
             return {"error": str(e)}
     
     def get_by_id(self, endpoint: str, item_id: int) -> Dict[str, Any]:
@@ -73,7 +77,8 @@ class APIClient:
         if endpoint not in self.endpoints:
             raise ValueError(f"Unknown endpoint: {endpoint}")
         
-        url = f"{self.endpoints[endpoint]}/{item_id}"
+        url = f"{self.base_url}{self.endpoints[endpoint]}/{item_id}"
+        logger.debug(f"GET by ID request URL: {url}")
         
         try:
             response = requests.get(
@@ -84,7 +89,7 @@ class APIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"API error (GET by ID): {e}")
+            logger.error(f"API error (GET by ID): {e}")
             return {"error": str(e)}
     
     def post(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -101,7 +106,7 @@ class APIClient:
         if endpoint not in self.endpoints:
             raise ValueError(f"Unknown endpoint: {endpoint}")
         
-        url = self.endpoints[endpoint]
+        url = self.base_url + self.endpoints[endpoint]
         
         try:
             response = requests.post(
@@ -113,7 +118,7 @@ class APIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"API error (POST): {e}")
+            logger.error(f"API error (POST): {e}")
             return {"error": str(e)}
     
     def put(self, endpoint: str, item_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -131,7 +136,7 @@ class APIClient:
         if endpoint not in self.endpoints:
             raise ValueError(f"Unknown endpoint: {endpoint}")
         
-        url = f"{self.endpoints[endpoint]}/{item_id}"
+        url = f"{self.base_url}{self.endpoints[endpoint]}/{item_id}"
         
         try:
             response = requests.put(
@@ -143,7 +148,7 @@ class APIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"API error (PUT): {e}")
+            logger.error(f"API error (PUT): {e}")
             return {"error": str(e)}
     
     def delete(self, endpoint: str, item_id: int) -> Dict[str, Any]:
@@ -160,7 +165,7 @@ class APIClient:
         if endpoint not in self.endpoints:
             raise ValueError(f"Unknown endpoint: {endpoint}")
         
-        url = f"{self.endpoints[endpoint]}/{item_id}"
+        url = f"{self.base_url}{self.endpoints[endpoint]}/{item_id}"
         
         try:
             response = requests.delete(
@@ -171,7 +176,7 @@ class APIClient:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"API error (DELETE): {e}")
+            logger.error(f"API error (DELETE): {e}")
             return {"error": str(e)}
     
     # Specialized methods for common operations

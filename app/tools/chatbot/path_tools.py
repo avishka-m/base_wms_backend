@@ -7,6 +7,7 @@ import json
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
 from app.utils.chatbot.api_client import api_client
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.utils.chatbot.demo_data import get_demo_locations, get_demo_inventory_data, is_api_error
 
 class Location:
     """Represents a warehouse location for path finding."""
@@ -48,10 +49,17 @@ def get_warehouse_layout() -> List[Location]:
     """Fetch all warehouse locations from the API."""
     try:
         locations_data = api_client.get_locations()
+        
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(locations_data):
+            locations_data = get_demo_locations()
+        
         return [Location.from_api_data(loc) for loc in locations_data]
     except Exception as e:
         print(f"Error fetching warehouse layout: {e}")
-        return []
+        # Fallback to demo data
+        locations_data = get_demo_locations()
+        return [Location.from_api_data(loc) for loc in locations_data]
 
 def get_item_locations(item_ids: List[int]) -> Dict[int, Location]:
     """Get the locations for a list of item IDs."""
@@ -60,13 +68,43 @@ def get_item_locations(item_ids: List[int]) -> Dict[int, Location]:
     for item_id in item_ids:
         try:
             item = api_client.get_inventory_item(item_id)
+            
+            # Check if we got an error response - use demo data as fallback
+            if is_api_error(item):
+                demo_items = get_demo_inventory_data(item_id=item_id)
+                if demo_items:
+                    item = demo_items[0]
+                else:
+                    print(f"Item {item_id} not found in demo data")
+                    continue
+            
             location_id = item.get('location_id')
             
             if location_id:
                 location_data = api_client.get_by_id("locations", location_id)
+                
+                # Check if we got an error response - use demo data as fallback
+                if is_api_error(location_data):
+                    demo_locations = get_demo_locations(location_id=location_id)
+                    if demo_locations:
+                        location_data = demo_locations[0]
+                    else:
+                        print(f"Location {location_id} not found in demo data")
+                        continue
+                
                 item_locations[item_id] = Location.from_api_data(location_data)
         except Exception as e:
             print(f"Error getting location for item {item_id}: {e}")
+            # Try demo data as fallback
+            demo_items = get_demo_inventory_data(item_id=item_id)
+            if demo_items:
+                item = demo_items[0]
+                location_id = item.get('location_id')
+                if location_id:
+                    demo_locations = get_demo_locations(location_id=location_id)
+                    if demo_locations:
+                        location_data = demo_locations[0]
+                        item_locations[item_id] = Location.from_api_data(location_data)
             
     return item_locations
 

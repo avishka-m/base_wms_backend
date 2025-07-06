@@ -59,13 +59,33 @@ async def get_optional_current_user(
     Returns:
         Current user information
     """
-    # If DEV_MODE is enabled globally or dev_mode query param is True, return mock user
-    if DEV_MODE or dev_mode:
+    # First, try to authenticate with real token if available
+    if token:
+        try:
+            # Attempt real authentication first
+            real_user = await get_current_user(token)
+            if real_user and real_user.get("username"):
+                logger.info(f"Using real authenticated user: {real_user.get('username')}")
+                return real_user
+        except Exception as e:
+            logger.warning(f"Real authentication failed: {e}")
+            # Continue to fallback below
+    
+    # If explicit dev_mode requested or no token available, use dev user
+    if dev_mode or not token:
         logger.warning("Using development mode: Authentication bypassed!")
         return dev_mock_user
         
-    # Otherwise use normal authentication
-    return await get_current_user(token)
+    # If DEV_MODE is globally enabled but no explicit dev_mode flag, still try real auth first
+    if DEV_MODE:
+        logger.warning("Global DEV_MODE enabled but no valid token - using dev_user fallback")
+        return dev_mock_user
+        
+    # If we get here, authentication is required but failed
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required"
+    )
 
 # Role-based access with development mode support
 def optional_has_role(required_roles: list):
@@ -114,6 +134,7 @@ def get_allowed_chatbot_roles(user_role: str) -> list[str]:
         "PackerSupervisor": ["packer"],
         "DriverSupervisor": ["driver"],
         "Clerk": ["clerk"],
+        "ReceivingClerk": ["clerk"],  # Receiving clerks can use clerk chatbot
         "Picker": ["picker"],
         "Packer": ["packer"],
         "Driver": ["driver"]

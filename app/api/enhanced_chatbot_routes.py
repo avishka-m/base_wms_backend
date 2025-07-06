@@ -20,7 +20,7 @@ from app.models.chatbot.enhanced_chat_models import (
     ChatMessageType
 )
 from app.services.chatbot.auth_service import get_optional_current_user, get_allowed_chatbot_roles
-from app.services.chatbot.agent_service import AgentService
+from app.services.chatbot.agent_service import EnhancedAgentService
 from app.services.chatbot.enhanced_conversation_service import EnhancedConversationService
 
 logger = logging.getLogger("wms_chatbot.enhanced_chat_routes")
@@ -28,7 +28,7 @@ logger = logging.getLogger("wms_chatbot.enhanced_chat_routes")
 router = APIRouter()
 
 # Initialize services
-agent_service = AgentService()
+agent_service = EnhancedAgentService()
 conversation_service = EnhancedConversationService()
 
 
@@ -1266,6 +1266,15 @@ async def chat_message(
         Chat response
     """
     user_id = current_user.get("username", "anonymous")
+    user_role = current_user.get("role", "")
+    
+    # Validate user has access to this chatbot role
+    allowed_roles = get_allowed_chatbot_roles(user_role)
+    if data.role not in allowed_roles and user_role != "Manager":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User with role '{user_role}' cannot access the '{data.role}' chatbot"
+        )
     
     try:
         # If conversation_id is provided, use it; otherwise create a new conversation

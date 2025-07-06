@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
 from app.utils.chatbot.api_client import api_client
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.utils.chatbot.demo_data import get_demo_orders, get_demo_workers, is_api_error
 
 # Define order query tool
 def check_order_func(order_id: int) -> str:
@@ -12,11 +13,19 @@ def check_order_func(order_id: int) -> str:
     try:
         order = api_client.get_order(order_id)
         
-        if not order:
-            return f"No order found with ID {order_id}."
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(order):
+            demo_orders = get_demo_orders(order_id=order_id)
+            if demo_orders:
+                order = demo_orders[0]
+                note = " (Demo data - API not accessible)"
+            else:
+                return f"Order with ID {order_id} not found in demo data."
+        else:
+            note = ""
             
         # Format the response
-        result = f"Order Details for Order #{order_id}:\n\n"
+        result = f"Order Details for Order #{order_id}{note}:\n\n"
         result += f"Status: {order.get('status')}\n"
         result += f"Customer: {order.get('customer_name')} (ID: {order.get('customer_id')})\n"
         result += f"Created: {order.get('created_at')}\n"
@@ -62,7 +71,57 @@ def check_order_func(order_id: int) -> str:
             
         return result
     except Exception as e:
-        return f"Error retrieving order: {str(e)}"
+        # Fallback to demo data on exception
+        demo_orders = get_demo_orders(order_id=order_id)
+        if demo_orders:
+            order = demo_orders[0]
+            result = f"Order Details for Order #{order_id} (Demo data - API error):\n\n"
+            result += f"Status: {order.get('status')}\n"
+            result += f"Customer: {order.get('customer_name')} (ID: {order.get('customer_id')})\n"
+            result += f"Created: {order.get('created_at')}\n"
+            result += f"Updated: {order.get('updated_at')}\n"
+            result += f"Total Items: {len(order.get('items', []))}\n"
+            result += f"Total Value: ${order.get('total_value')}\n\n"
+            
+            # Order items
+            result += "Order Items:\n"
+            result += "-" * 50 + "\n"
+            
+            for item in order.get('items', []):
+                result += f"- {item.get('quantity')}x {item.get('item_name')} (SKU: {item.get('sku')})\n"
+                result += f"  Price: ${item.get('unit_price')} each, Subtotal: ${item.get('subtotal')}\n"
+                result += f"  Status: {item.get('status')}\n"
+            
+            result += "-" * 50 + "\n\n"
+            
+            # Related tasks
+            if order.get('picking_tasks'):
+                result += "Picking Tasks:\n"
+                for task in order.get('picking_tasks'):
+                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
+                    result += f"  Assigned to: {task.get('worker_name')}\n"
+                    result += f"  Created: {task.get('created_at')}\n"
+                result += "\n"
+                
+            if order.get('packing_tasks'):
+                result += "Packing Tasks:\n"
+                for task in order.get('packing_tasks'):
+                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
+                    result += f"  Assigned to: {task.get('worker_name')}\n"
+                    result += f"  Created: {task.get('created_at')}\n"
+                result += "\n"
+                
+            if order.get('shipping_tasks'):
+                result += "Shipping Tasks:\n"
+                for task in order.get('shipping_tasks'):
+                    result += f"- Task #{task.get('id')}: {task.get('status')}\n"
+                    result += f"  Assigned to: {task.get('worker_name')}\n"
+                    result += f"  Vehicle: {task.get('vehicle_name')} (ID: {task.get('vehicle_id')})\n"
+                    result += f"  Created: {task.get('created_at')}\n"
+                
+            return result
+        else:
+            return f"Error retrieving order: {str(e)}"
 
 # Define create sub-order tool
 def create_sub_order_func(parent_order_id: int, 

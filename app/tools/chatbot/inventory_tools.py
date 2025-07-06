@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
 from app.utils.chatbot.api_client import api_client
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.utils.chatbot.demo_data import get_demo_inventory_data, is_api_error
 
 # Define inventory query tool
 def inventory_query_func(item_id: Optional[int] = None, 
@@ -21,9 +22,47 @@ def inventory_query_func(item_id: Optional[int] = None,
         # If item_id is provided, do a direct lookup
         try:
             item = api_client.get_inventory_item(item_id)
-            return f"Found inventory item: {item}"
+            
+            # Check if we got an error response - use demo data as fallback
+            if is_api_error(item):
+                demo_items = get_demo_inventory_data(item_id=item_id)
+                if demo_items:
+                    item = demo_items[0]
+                    note = " (Demo data - API not accessible)"
+                else:
+                    return f"Item with ID {item_id} not found in demo data."
+            else:
+                note = ""
+            
+            # Format single item response
+            result = f"Found inventory item{note}:\n\n"
+            result += f"ID: {item.get('id')}\n"
+            result += f"SKU: {item.get('sku')}\n"
+            result += f"Name: {item.get('name')}\n"
+            result += f"Category: {item.get('category')}\n"
+            result += f"Quantity: {item.get('quantity')}\n"
+            result += f"Location: {item.get('location_id')}\n"
+            result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
+            result += f"Description: {item.get('description', 'N/A')}\n"
+            
+            return result
         except Exception as e:
-            return f"Error retrieving inventory item: {str(e)}"
+            # Fallback to demo data on exception
+            demo_items = get_demo_inventory_data(item_id=item_id)
+            if demo_items:
+                item = demo_items[0]
+                result = "Found inventory item (Demo data - API error):\n\n"
+                result += f"ID: {item.get('id')}\n"
+                result += f"SKU: {item.get('sku')}\n"
+                result += f"Name: {item.get('name')}\n"
+                result += f"Category: {item.get('category')}\n"
+                result += f"Quantity: {item.get('quantity')}\n"
+                result += f"Location: {item.get('location_id')}\n"
+                result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
+                result += f"Description: {item.get('description', 'N/A')}\n"
+                return result
+            else:
+                return f"Error retrieving inventory item: {str(e)}"
             
     # Build filter parameters
     if sku:
@@ -40,11 +79,21 @@ def inventory_query_func(item_id: Optional[int] = None,
     try:
         inventory_items = api_client.get_inventory(params)
         
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(inventory_items):
+            inventory_items = get_demo_inventory_data(
+                sku=sku, name=name, category=category, 
+                location_id=location_id, min_quantity=min_quantity
+            )
+            note = " (Demo data - API not accessible)"
+        else:
+            note = ""
+        
         if not inventory_items:
             return "No inventory items found matching your criteria."
             
         # Format the results
-        result = "Found the following inventory items:\n\n"
+        result = f"Found the following inventory items{note}:\n\n"
         for item in inventory_items:
             result += f"ID: {item.get('id')}\n"
             result += f"SKU: {item.get('sku')}\n"
@@ -52,11 +101,34 @@ def inventory_query_func(item_id: Optional[int] = None,
             result += f"Category: {item.get('category')}\n"
             result += f"Quantity: {item.get('quantity')}\n"
             result += f"Location: {item.get('location_id')}\n"
+            result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
             result += "-" * 40 + "\n"
             
         return result
     except Exception as e:
-        return f"Error querying inventory: {str(e)}"
+        # Fallback to demo data on exception
+        try:
+            inventory_items = get_demo_inventory_data(
+                sku=sku, name=name, category=category, 
+                location_id=location_id, min_quantity=min_quantity
+            )
+            if not inventory_items:
+                return "No inventory items found matching your criteria."
+            
+            result = "Found the following inventory items (Demo data - API error):\n\n"
+            for item in inventory_items:
+                result += f"ID: {item.get('id')}\n"
+                result += f"SKU: {item.get('sku')}\n"
+                result += f"Name: {item.get('name')}\n"
+                result += f"Category: {item.get('category')}\n"
+                result += f"Quantity: {item.get('quantity')}\n"
+                result += f"Location: {item.get('location_id')}\n"
+                result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
+                result += "-" * 40 + "\n"
+            
+            return result
+        except:
+            return f"Error querying inventory: {str(e)}"
 
 # Define inventory add tool
 def inventory_add_func(sku: str, 

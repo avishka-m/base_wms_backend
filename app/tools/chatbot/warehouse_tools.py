@@ -7,6 +7,10 @@ import datetime
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
 from app.utils.chatbot.api_client import api_client
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.utils.chatbot.demo_data import (
+    get_demo_suppliers, get_demo_vehicles, get_demo_workers, 
+    get_demo_analytics, is_api_error
+)
 
 def check_supplier_func(supplier_id: Optional[int] = None,
                       name: Optional[str] = None,
@@ -36,10 +40,20 @@ def check_supplier_func(supplier_id: Optional[int] = None,
             
         suppliers = api_client.get("supplier", params)
         
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(suppliers):
+            suppliers = get_demo_suppliers(
+                supplier_id=supplier_id, 
+                category=product_category
+            )
+            note = " (Demo data - API not accessible)"
+        else:
+            note = ""
+        
         if not suppliers:
             return "No suppliers found matching your criteria."
             
-        result = "Supplier Information:\n\n"
+        result = f"Supplier Information{note}:\n\n"
         
         for supplier in suppliers:
             result += f"ID: {supplier.get('id')}\n"
@@ -85,6 +99,13 @@ def vehicle_select_func(weight: float,
             
         # Get available vehicles
         vehicles = api_client.get("vehicles", params)
+        
+        # Check if we got an error response - use demo data as fallback
+        if is_api_error(vehicles):
+            vehicles = get_demo_vehicles(refrigerated=refrigerated)
+            note = " (Demo data - API not accessible)"
+        else:
+            note = ""
         
         if not vehicles:
             return "No vehicles found matching your criteria."
@@ -140,7 +161,7 @@ def vehicle_select_func(weight: float,
         # Return recommendation
         best_vehicle = scored_vehicles[0]["vehicle"]
         
-        result = "Vehicle Recommendation:\n\n"
+        result = f"Vehicle Recommendation{note}:\n\n"
         result += f"Recommended Vehicle: {best_vehicle.get('name')} (ID: {best_vehicle.get('id')})\n"
         result += f"Type: {best_vehicle.get('type')}\n"
         result += f"Capacity: {best_vehicle.get('capacity')} kg\n"

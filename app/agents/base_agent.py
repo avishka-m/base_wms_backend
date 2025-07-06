@@ -111,7 +111,7 @@ class BaseAgent:
         )
 
     @traceable(name="agent_run", run_type="chain")
-    def run(self, query: str) -> str:
+    async def run(self, query: str) -> str:
         """
         Run the agent on a user query.
         
@@ -152,8 +152,8 @@ class BaseAgent:
                 "kb_results_count": len(kb_results)
             }
             
-            # Run the agent with tracing enabled
-            result = self.agent_executor.invoke(
+            # Run the agent with async execution and tracing enabled
+            result = await self.agent_executor.ainvoke(
                 {"input": enriched_query},
                 config={"metadata": metadata} if self.tracing_enabled else {}
             )

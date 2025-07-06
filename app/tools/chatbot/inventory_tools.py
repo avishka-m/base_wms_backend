@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 # Use absolute imports instead of relative imports
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
-from app.utils.chatbot.api_client import async_api_client
+from app.utils.chatbot.mongodb_client import chatbot_mongodb_client
 from app.utils.chatbot.knowledge_base import knowledge_base
 from app.utils.chatbot.demo_data import get_demo_inventory_data, is_api_error
 
@@ -14,116 +14,83 @@ async def inventory_query_func(item_id: Optional[int] = None,
                          category: Optional[str] = None,
                          location_id: Optional[int] = None,
                          min_quantity: Optional[int] = None) -> str:
-    """Query the inventory based on various parameters."""
-    params = {}
+    """Query the inventory based on various parameters using direct MongoDB access."""
     
-    # Add non-None parameters to query
-    if item_id is not None:
+    try:
         # If item_id is provided, do a direct lookup
-        try:
-            item = await async_api_client.get_inventory_item(item_id)
+        if item_id is not None:
+            item = await chatbot_mongodb_client.get_inventory_item_by_id(item_id)
             
-            # Check if we got an error response - use demo data as fallback
-            if is_api_error(item):
-                demo_items = get_demo_inventory_data(item_id=item_id)
-                if demo_items:
-                    item = demo_items[0]
-                    note = " (Demo data - API not accessible)"
-                else:
-                    return f"Item with ID {item_id} not found in demo data."
-            else:
-                note = ""
+            if not item:
+                return f"Item with ID {item_id} not found in the database."
             
             # Format single item response
-            result = f"Found inventory item{note}:\n\n"
-            result += f"ID: {item.get('id')}\n"
-            result += f"SKU: {item.get('sku')}\n"
+            result = "Found inventory item:\n\n"
+            result += f"ID: {item.get('itemID')}\n"
             result += f"Name: {item.get('name')}\n"
             result += f"Category: {item.get('category')}\n"
-            result += f"Quantity: {item.get('quantity')}\n"
-            result += f"Location: {item.get('location_id')}\n"
-            result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
-            result += f"Description: {item.get('description', 'N/A')}\n"
+            result += f"Stock Level: {item.get('stock_level')}\n"
+            result += f"Min Stock: {item.get('min_stock_level', 'N/A')}\n"
+            result += f"Max Stock: {item.get('max_stock_level', 'N/A')}\n"
+            result += f"Location ID: {item.get('locationID')}\n"
+            result += f"Supplier ID: {item.get('supplierID', 'N/A')}\n"
+            result += f"Size: {item.get('size', 'N/A')}\n"
+            result += f"Storage Type: {item.get('storage_type', 'N/A')}\n"
+            result += f"Created: {item.get('created_at', 'N/A')}\n"
             
             return result
-        except Exception as e:
-            # Fallback to demo data on exception
-            demo_items = get_demo_inventory_data(item_id=item_id)
-            if demo_items:
-                item = demo_items[0]
-                result = "Found inventory item (Demo data - API error):\n\n"
-                result += f"ID: {item.get('id')}\n"
-                result += f"SKU: {item.get('sku')}\n"
-                result += f"Name: {item.get('name')}\n"
-                result += f"Category: {item.get('category')}\n"
-                result += f"Quantity: {item.get('quantity')}\n"
-                result += f"Location: {item.get('location_id')}\n"
-                result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
-                result += f"Description: {item.get('description', 'N/A')}\n"
-                return result
-            else:
-                return f"Error retrieving inventory item: {str(e)}"
-            
-    # Build filter parameters
-    if sku:
-        params["sku"] = sku
-    if name:
-        params["name"] = name
-    if category:
-        params["category"] = category
-    if location_id:
-        params["location_id"] = location_id
-    if min_quantity is not None:
-        params["min_quantity"] = min_quantity
         
-    try:
-        inventory_items = await async_api_client.get_inventory(params)
+        # Build filter criteria for MongoDB query
+        filter_criteria = {}
         
-        # Check if we got an error response - use demo data as fallback
-        if is_api_error(inventory_items):
-            inventory_items = get_demo_inventory_data(
-                sku=sku, name=name, category=category, 
-                location_id=location_id, min_quantity=min_quantity
-            )
-            note = " (Demo data - API not accessible)"
+        if name:
+            # Search inventory by name (partial match)
+            inventory_items = await chatbot_mongodb_client.search_inventory_by_name(name)
+        elif category:
+            # Search by category
+            inventory_items = await chatbot_mongodb_client.get_inventory_by_category(category)
         else:
-            note = ""
+            # Build complex filter
+            if location_id:
+                filter_criteria["locationID"] = location_id
+            if min_quantity is not None:
+                filter_criteria["stock_level"] = {"$gte": min_quantity}
+            
+            inventory_items = await chatbot_mongodb_client.get_inventory_items(filter_criteria)
         
         if not inventory_items:
             return "No inventory items found matching your criteria."
             
         # Format the results
-        result = f"Found the following inventory items{note}:\n\n"
+        result = f"Found {len(inventory_items)} inventory item(s):\n\n"
         for item in inventory_items:
-            result += f"ID: {item.get('id')}\n"
-            result += f"SKU: {item.get('sku')}\n"
+            result += f"ID: {item.get('itemID')}\n"
             result += f"Name: {item.get('name')}\n"
             result += f"Category: {item.get('category')}\n"
-            result += f"Quantity: {item.get('quantity')}\n"
-            result += f"Location: {item.get('location_id')}\n"
-            result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
+            result += f"Stock Level: {item.get('stock_level')}\n"
+            result += f"Location ID: {item.get('locationID')}\n"
+            result += f"Storage Type: {item.get('storage_type', 'N/A')}\n"
             result += "-" * 40 + "\n"
             
         return result
+        
     except Exception as e:
-        # Fallback to demo data on exception
+        # Fallback to demo data on database error
         try:
             inventory_items = get_demo_inventory_data(
-                sku=sku, name=name, category=category, 
+                item_id=item_id, name=name, category=category, 
                 location_id=location_id, min_quantity=min_quantity
             )
             if not inventory_items:
                 return "No inventory items found matching your criteria."
             
-            result = "Found the following inventory items (Demo data - API error):\n\n"
+            result = "Found the following inventory items (Demo data - Database error):\n\n"
             for item in inventory_items:
                 result += f"ID: {item.get('id')}\n"
-                result += f"SKU: {item.get('sku')}\n"
                 result += f"Name: {item.get('name')}\n"
                 result += f"Category: {item.get('category')}\n"
                 result += f"Quantity: {item.get('quantity')}\n"
                 result += f"Location: {item.get('location_id')}\n"
-                result += f"Unit Price: ${item.get('unit_price', 'N/A')}\n"
                 result += "-" * 40 + "\n"
             
             return result
@@ -139,38 +106,10 @@ async def inventory_add_func(sku: str,
                        unit_price: float,
                        supplier_id: Optional[int] = None,
                        description: Optional[str] = None) -> str:
-    """Add a new item to the inventory."""
-    # Prepare the data for the new inventory item
-    data = {
-        "sku": sku,
-        "name": name,
-        "category": category,
-        "quantity": quantity,
-        "location_id": location_id,
-        "unit_price": unit_price
-    }
-    
-    # Add optional fields if provided
-    if supplier_id:
-        data["supplier_id"] = supplier_id
-    if description:
-        data["description"] = description
-        
-    try:
-        # Check if location exists
-        locations = await async_api_client.get_locations({"id": location_id})
-        if not locations:
-            return f"Error: Location with ID {location_id} does not exist."
-            
-        # Create the inventory item
-        response = await async_api_client.post("inventory", data)
-        
-        if is_api_error(response):
-            return f"Error adding inventory item: {response.get('error', 'Unknown error')}"
-        
-        return f"Successfully added inventory item: {response.get('id')} - {response.get('name')}"
-    except Exception as e:
-        return f"Error adding inventory item: {str(e)}"
+    """Add a new item to the inventory (currently not implemented with direct MongoDB access)."""
+    return ("❌ Inventory add operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to add new inventory items.")
 
 # Define inventory update tool
 async def inventory_update_func(item_id: int,
@@ -182,137 +121,81 @@ async def inventory_update_func(item_id: int,
                          unit_price: Optional[float] = None,
                          supplier_id: Optional[int] = None,
                          description: Optional[str] = None) -> str:
-    """Update an existing inventory item."""
-    # First, verify the item exists
-    try:
-        existing_item = await async_api_client.get_inventory_item(item_id)
-        if is_api_error(existing_item):
-            return f"Error: Could not find inventory item with ID {item_id}: {existing_item.get('error', 'Unknown error')}"
-    except Exception as e:
-        return f"Error: Could not find inventory item with ID {item_id}: {str(e)}"
-        
-    # Prepare update data with only the fields that are provided
-    update_data = {}
-    if sku:
-        update_data["sku"] = sku
-    if name:
-        update_data["name"] = name
-    if category:
-        update_data["category"] = category
-    if quantity is not None:
-        update_data["quantity"] = quantity
-    if location_id:
-        # Check if location exists
-        try:
-            locations = await async_api_client.get_locations({"id": location_id})
-            if not locations:
-                return f"Error: Location with ID {location_id} does not exist."
-            update_data["location_id"] = location_id
-        except:
-            return f"Error: Could not verify location with ID {location_id}."
-    if unit_price is not None:
-        update_data["unit_price"] = unit_price
-    if supplier_id:
-        update_data["supplier_id"] = supplier_id
-    if description:
-        update_data["description"] = description
-        
-    if not update_data:
-        return "No update data provided. Please specify at least one field to update."
-        
-    try:
-        response = await async_api_client.put("inventory", item_id, update_data)
-        
-        if is_api_error(response):
-            return f"Error updating inventory item: {response.get('error', 'Unknown error')}"
-        
-        return f"Successfully updated inventory item {item_id}: {response.get('name', 'Unknown')}"
-    except Exception as e:
-        return f"Error updating inventory item: {str(e)}"
+    """Update an existing inventory item (currently not implemented with direct MongoDB access)."""
+    return ("❌ Inventory update operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to update inventory items.")
 
 # Define inventory delete tool
 async def inventory_delete_func(item_id: int) -> str:
-    """Delete an inventory item."""
-    try:
-        # First verify the item exists
-        existing_item = await async_api_client.get_inventory_item(item_id)
-        if is_api_error(existing_item):
-            return f"Error: Could not find inventory item with ID {item_id}: {existing_item.get('error', 'Unknown error')}"
-        
-        # Delete the item
-        response = await async_api_client.delete("inventory", item_id)
-        
-        if is_api_error(response):
-            return f"Error deleting inventory item: {response.get('error', 'Unknown error')}"
-        
-        return f"Successfully deleted inventory item {item_id}: {existing_item.get('name', 'Unknown')}"
-    except Exception as e:
-        return f"Error deleting inventory item: {str(e)}"
+    """Delete an inventory item (currently not implemented with direct MongoDB access)."""
+    return ("❌ Inventory delete operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to delete inventory items.")
 
 # Define item locator tool
 async def locate_item_func(item_id: Optional[int] = None, 
                     sku: Optional[str] = None,
                     name: Optional[str] = None) -> str:
-    """Locate an item in the warehouse and provide path guidance."""
+    """Locate an item in the warehouse and provide path guidance using direct MongoDB access."""
     try:
         # First, find the item
         if item_id:
-            item = await async_api_client.get_inventory_item(item_id)
-            if is_api_error(item):
+            item = await chatbot_mongodb_client.get_inventory_item_by_id(item_id)
+            if not item:
                 return f"Item with ID {item_id} not found."
-        else:
-            # Search by SKU or name
-            params = {}
-            if sku:
-                params["sku"] = sku
-            if name:
-                params["name"] = name
-                
-            if not params:
-                return "Please provide either item_id, sku, or name to locate an item."
-                
-            items = await async_api_client.get_inventory(params)
-            if is_api_error(items) or not items:
+        elif name:
+            # Search by name
+            items = await chatbot_mongodb_client.search_inventory_by_name(name)
+            if not items:
                 return "No items found matching your search criteria."
             
             if len(items) > 1:
                 # Multiple items found
                 result = "Multiple items found:\n\n"
                 for item in items[:5]:  # Show first 5 matches
-                    result += f"ID: {item.get('id')} | SKU: {item.get('sku')} | Name: {item.get('name')} | Location: {item.get('location_id')}\n"
+                    result += f"ID: {item.get('itemID')} | Name: {item.get('name')} | Location ID: {item.get('locationID')}\n"
                 result += "\nPlease specify the exact item_id to get location details."
                 return result
             
             item = items[0]
+        else:
+            return "Please provide either item_id or name to locate an item."
         
         # Get location details
-        location_id = item.get('location_id')
+        location_id = item.get('locationID')
         if not location_id:
             return f"Item {item.get('name', 'Unknown')} does not have a location assigned."
         
         # Get location information
-        locations = await async_api_client.get_locations({"id": location_id})
-        if is_api_error(locations) or not locations:
+        location = await chatbot_mongodb_client.get_location_by_id(location_id)
+        if not location:
             return f"Location information not available for location ID {location_id}."
         
-        location = locations[0] if isinstance(locations, list) else locations
-        
-        # Format location information
+        # Format location information using actual database schema
         result = f"Item Location Found:\n\n"
-        result += f"Item: {item.get('name')} (SKU: {item.get('sku')})\n"
-        result += f"Quantity Available: {item.get('quantity', 0)}\n"
+        result += f"Item: {item.get('name')}\n"
+        result += f"Item ID: {item.get('itemID')}\n"
+        result += f"Stock Level: {item.get('stock_level', 0)} units\n"
+        result += f"Category: {item.get('category', 'Unknown')}\n"
         result += f"Location ID: {location_id}\n"
-        result += f"Location Name: {location.get('name', 'Unknown')}\n"
-        result += f"Zone: {location.get('zone', 'Unknown')}\n"
-        result += f"Aisle: {location.get('aisle', 'Unknown')}\n"
-        result += f"Rack: {location.get('rack', 'Unknown')}\n"
+        result += f"Section: {location.get('section', 'Unknown')}\n"
+        result += f"Row: {location.get('row', 'Unknown')}\n"
         result += f"Shelf: {location.get('shelf', 'Unknown')}\n"
+        result += f"Bin: {location.get('bin', 'Unknown')}\n"
+        result += f"Warehouse ID: {location.get('warehouseID', 'Unknown')}\n"
         
-        # Add basic navigation hint
-        result += f"\nNavigation: Go to Zone {location.get('zone', '?')}, "
-        result += f"Aisle {location.get('aisle', '?')}, "
-        result += f"Rack {location.get('rack', '?')}, "
-        result += f"Shelf {location.get('shelf', '?')}"
+        # Add basic navigation hint using actual schema
+        result += f"\nNavigation: Go to Section {location.get('section', '?')}, "
+        result += f"Row {location.get('row', '?')}, "
+        result += f"Shelf {location.get('shelf', '?')}, "
+        result += f"Bin {location.get('bin', '?')}"
+        
+        # Add occupancy status
+        if location.get('is_occupied'):
+            result += f"\nStatus: Location is occupied"
+        else:
+            result += f"\nStatus: Location is available"
         
         return result
         
@@ -321,38 +204,25 @@ async def locate_item_func(item_id: Optional[int] = None,
 
 # Define low stock alert tool
 async def low_stock_alert_func(threshold: int = 10) -> str:
-    """Check for items with low stock levels."""
+    """Check for items with low stock levels using direct MongoDB access."""
     try:
-        # Get all inventory items
-        inventory_items = await async_api_client.get_inventory()
-        
-        if is_api_error(inventory_items):
-            # Use demo data as fallback
-            inventory_items = get_demo_inventory_data()
-            note = " (Demo data - API not accessible)"
-        else:
-            note = ""
-        
-        if not inventory_items:
-            return "No inventory items found."
-        
-        # Filter items with low stock
-        low_stock_items = [
-            item for item in inventory_items 
-            if item.get('quantity', 0) <= threshold
-        ]
+        # Get low stock items directly from MongoDB
+        low_stock_items = await chatbot_mongodb_client.get_low_stock_items(threshold)
         
         if not low_stock_items:
             return f"No items found with stock levels at or below {threshold} units."
         
         # Format results
-        result = f"Low Stock Alert{note} (Threshold: {threshold} units):\n\n"
+        result = f"Low Stock Alert (Threshold: {threshold} units):\n\n"
         
         for item in low_stock_items:
-            result += f"⚠️  {item.get('name')} (SKU: {item.get('sku')})\n"
-            result += f"    Current Stock: {item.get('quantity', 0)} units\n"
-            result += f"    Location: {item.get('location_id', 'Unknown')}\n"
+            result += f"⚠️  {item.get('name')}\n"
+            result += f"    Item ID: {item.get('itemID')}\n"
+            result += f"    Current Stock: {item.get('stock_level', 0)} units\n"
+            result += f"    Min Stock Level: {item.get('min_stock_level', 'N/A')} units\n"
+            result += f"    Location ID: {item.get('locationID', 'Unknown')}\n"
             result += f"    Category: {item.get('category', 'Unknown')}\n"
+            result += f"    Storage Type: {item.get('storage_type', 'N/A')}\n"
             result += "-" * 40 + "\n"
         
         result += f"\nTotal items with low stock: {len(low_stock_items)}"
@@ -360,66 +230,40 @@ async def low_stock_alert_func(threshold: int = 10) -> str:
         return result
         
     except Exception as e:
-        return f"Error checking low stock: {str(e)}"
+        # Fallback to demo data on database error
+        try:
+            inventory_items = get_demo_inventory_data()
+            low_stock_items = [
+                item for item in inventory_items 
+                if item.get('quantity', 0) <= threshold
+            ]
+            
+            if not low_stock_items:
+                return f"No items found with stock levels at or below {threshold} units."
+            
+            result = f"Low Stock Alert (Demo data - Database error) (Threshold: {threshold} units):\n\n"
+            
+            for item in low_stock_items:
+                result += f"⚠️  {item.get('name')}\n"
+                result += f"    Current Stock: {item.get('quantity', 0)} units\n"
+                result += f"    Location: {item.get('location_id', 'Unknown')}\n"
+                result += f"    Category: {item.get('category', 'Unknown')}\n"
+                result += "-" * 40 + "\n"
+            
+            result += f"\nTotal items with low stock: {len(low_stock_items)}"
+            return result
+        except:
+            return f"Error checking low stock: {str(e)}"
 
 # Define stock movement tool
 async def stock_movement_func(item_id: int, 
                         from_location_id: int, 
                         to_location_id: int, 
                         quantity: int) -> str:
-    """Move stock from one location to another."""
-    try:
-        # Verify the item exists
-        item = await async_api_client.get_inventory_item(item_id)
-        if is_api_error(item):
-            return f"Item with ID {item_id} not found."
-        
-        # Check current location and quantity
-        current_location = item.get('location_id')
-        current_quantity = item.get('quantity', 0)
-        
-        if current_location != from_location_id:
-            return f"Item is currently at location {current_location}, not {from_location_id}."
-        
-        if current_quantity < quantity:
-            return f"Insufficient stock. Available: {current_quantity}, Requested: {quantity}"
-        
-        # Verify destination location exists
-        to_locations = await async_api_client.get_locations({"id": to_location_id})
-        if is_api_error(to_locations) or not to_locations:
-            return f"Destination location {to_location_id} not found."
-        
-        # Calculate new quantities (simplified - assumes all stock moves)
-        if quantity == current_quantity:
-            # Move all stock to new location
-            update_data = {
-                "location_id": to_location_id
-            }
-        else:
-            # Partial move - in a real system, this would create a new inventory record
-            # For now, we'll just update the location and adjust quantity
-            update_data = {
-                "location_id": to_location_id,
-                "quantity": quantity
-            }
-        
-        # Update the item
-        response = await async_api_client.put("inventory", item_id, update_data)
-        
-        if is_api_error(response):
-            return f"Error moving stock: {response.get('error', 'Unknown error')}"
-        
-        result = f"Stock Movement Completed:\n\n"
-        result += f"Item: {item.get('name')} (SKU: {item.get('sku')})\n"
-        result += f"Quantity Moved: {quantity} units\n"
-        result += f"From Location: {from_location_id}\n"
-        result += f"To Location: {to_location_id}\n"
-        result += f"Status: Completed Successfully"
-        
-        return result
-        
-    except Exception as e:
-        return f"Error moving stock: {str(e)}"
+    """Move stock from one location to another (currently not implemented with direct MongoDB access)."""
+    return ("❌ Stock movement operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to move stock between locations.")
 
 # Create the tools
 inventory_query_tool = create_tool(

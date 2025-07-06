@@ -99,7 +99,7 @@ class ManagerAgent(BaseAgent):
         # Default case
         return f"{query}\n\nAs a warehouse manager, I need to oversee all warehouse operations, make strategic decisions, and ensure efficiency across all departments."
     
-    def run(self, query: str) -> str:
+    async def run(self, query: str) -> str:
         """
         Run the manager agent on a user query with enhanced context.
         
@@ -113,4 +113,4 @@ class ManagerAgent(BaseAgent):
         enhanced_query = self.enhance_query(query)
         
         # Run the agent with the enhanced query
-        return super().run(enhanced_query)
+        return await super().run(enhanced_query)

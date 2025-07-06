@@ -32,9 +32,7 @@ class ManagerAgent(BaseAgent):
         # Re-build the system prompt with the tools
         self.system_prompt = self._build_system_prompt()
         
-        # Create the agent executor with the updated tools
-        if self.llm is not None:
-            self.agent_executor = self._create_agent_executor()
+
         
     def get_management_procedures(self) -> str:
         """
@@ -99,12 +97,19 @@ class ManagerAgent(BaseAgent):
         # Default case
         return f"{query}\n\nAs a warehouse manager, I need to oversee all warehouse operations, make strategic decisions, and ensure efficiency across all departments."
     
-    async def run(self, query: str) -> str:
+    async def run(
+        self, 
+        query: str, 
+        conversation_id: str = "default", 
+        user_id: str = "anonymous"
+    ) -> str:
         """
         Run the manager agent on a user query with enhanced context.
         
         Args:
             query: User query string
+            conversation_id: Unique conversation identifier for memory persistence
+            user_id: User identifier for memory management
             
         Returns:
             Agent response string
@@ -113,4 +118,4 @@ class ManagerAgent(BaseAgent):
         enhanced_query = self.enhance_query(query)
         
         # Run the agent with the enhanced query
-        return await super().run(enhanced_query)
+        return await super().run(enhanced_query, conversation_id, user_id)

@@ -485,7 +485,7 @@ class EnhancedConversationService:
                 }
             )
             
-            if result.modified_count > 0:
+            if hasattr(result, 'modified_count') and result.modified_count > 0:
                 # Log audit event
                 await self._log_audit_event(
                     user_id=user_id,
@@ -558,7 +558,7 @@ class EnhancedConversationService:
                     }
                 )
             
-            if result.modified_count > 0 or (hard_delete and result.deleted_count > 0):
+            if (hasattr(result, 'modified_count') and result.modified_count > 0) or (hard_delete and hasattr(result, 'deleted_count') and result.deleted_count > 0):
                 # Log audit event
                 await self._log_audit_event(
                     user_id=user_id,

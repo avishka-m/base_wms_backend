@@ -1333,6 +1333,424 @@ async def chat_message(
         )
 
 
+# Add these new endpoints after the existing ones, before the migration endpoint
+@router.get("/users/{user_id}/history/overview", response_model=Dict[str, Any])
+async def get_user_history_overview(
+    user_id: str,
+    period_days: int = Query(30, description="Number of days to analyze"),
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Get comprehensive history overview for a specific user.
+    
+    Args:
+        user_id: User identifier (must match current user unless admin)
+        period_days: Number of days to analyze
+        current_user: Current authenticated user
+        
+    Returns:
+        User's conversation overview with analytics
+    """
+    requesting_user = current_user.get("username", "anonymous")
+    user_role = current_user.get("role", "").lower()
+    
+    # Security check: users can only access their own data unless admin/manager
+    if requesting_user != user_id and user_role not in ["admin", "manager"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Can only view your own conversation history"
+        )
+    
+    try:
+        # Get user's conversation statistics
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=1000,  # Get all conversations for analytics
+            offset=0
+        )
+        
+        # Calculate analytics
+        total_conversations = len(conversations.get("conversations", []))
+        today = datetime.now()
+        recent_conversations = []
+        agent_usage = {}
+        conversation_lengths = []
+        
+        for conv in conversations.get("conversations", []):
+            conv_date = datetime.fromisoformat(conv.get("created_at", today.isoformat()))
+            days_ago = (today - conv_date).days
+            
+            if days_ago <= period_days:
+                recent_conversations.append(conv)
+                
+                # Track agent role usage
+                agent_role = conv.get("agent_role", "general")
+                agent_usage[agent_role] = agent_usage.get(agent_role, 0) + 1
+                
+                # Track conversation length
+                msg_count = conv.get("message_count", 0)
+                if msg_count > 0:
+                    conversation_lengths.append(msg_count)
+        
+        # Calculate average conversation length
+        avg_length = sum(conversation_lengths) / len(conversation_lengths) if conversation_lengths else 0
+        
+        # Find most active agent
+        most_used_agent = max(agent_usage.items(), key=lambda x: x[1]) if agent_usage else ("general", 0)
+        
+        # Get conversation categories (based on first message content)
+        categories = {}
+        for conv in recent_conversations[:20]:  # Analyze recent 20 conversations
+            # Simple categorization based on keywords
+            last_msg = conv.get("last_message", "").lower()
+            if any(word in last_msg for word in ["inventory", "stock", "item"]):
+                categories["inventory"] = categories.get("inventory", 0) + 1
+            elif any(word in last_msg for word in ["order", "shipping", "delivery"]):
+                categories["orders"] = categories.get("orders", 0) + 1
+            elif any(word in last_msg for word in ["analytics", "report", "data"]):
+                categories["analytics"] = categories.get("analytics", 0) + 1
+            else:
+                categories["general"] = categories.get("general", 0) + 1
+        
+        return {
+            "user_id": user_id,
+            "period_days": period_days,
+            "overview": {
+                "total_conversations": total_conversations,
+                "recent_conversations": len(recent_conversations),
+                "average_conversation_length": round(avg_length, 1),
+                "most_used_agent": {
+                    "role": most_used_agent[0],
+                    "count": most_used_agent[1]
+                },
+                "agent_usage_breakdown": agent_usage,
+                "conversation_categories": categories,
+                "activity_trend": len(recent_conversations) > 0
+            },
+            "recent_conversations": recent_conversations[:10]  # Return 10 most recent
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get user history overview: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get history overview"
+        )
+
+
+@router.get("/users/current/quick-history", response_model=Dict[str, Any])
+async def get_current_user_quick_history(
+    limit: int = Query(5, description="Number of recent conversations"),
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Get quick history for current user - optimized for UI sidebar.
+    
+    Args:
+        limit: Number of recent conversations to return
+        current_user: Current authenticated user
+        
+    Returns:
+        Quick access history data
+    """
+    user_id = current_user.get("username", "anonymous")
+    
+    try:
+        # Get recent conversations with minimal data
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=limit,
+            offset=0,
+            status="active"
+        )
+        
+        quick_history = []
+        for conv in conversations.get("conversations", []):
+            # Create quick summary
+            last_msg = conv.get("last_message", "")
+            preview = last_msg[:50] + "..." if len(last_msg) > 50 else last_msg
+            
+            quick_history.append({
+                "conversation_id": conv["conversation_id"],
+                "title": conv.get("title", preview),
+                "preview": preview,
+                "agent_role": conv.get("agent_role", "general"),
+                "message_count": conv.get("message_count", 0),
+                "last_activity": conv.get("last_message_at", conv.get("created_at")),
+                "created_at": conv.get("created_at"),
+                "is_recent": True  # All returned conversations are recent
+            })
+        
+        return {
+            "user_id": user_id,
+            "conversations": quick_history,
+            "total_available": conversations.get("total", 0),
+            "has_more": conversations.get("total", 0) > limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get quick history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get quick history"
+        )
+
+
+@router.post("/conversations/smart-search", response_model=Dict[str, Any])
+async def smart_conversation_search(
+    data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Smart search across user's conversations with AI-powered relevance.
+    
+    Args:
+        data: Search parameters including query, filters, and options
+        current_user: Current authenticated user
+        
+    Returns:
+        Relevant conversations with context highlights
+    """
+    user_id = current_user.get("username", "anonymous")
+    query = data.get("query", "").strip()
+    
+    if not query:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Search query is required"
+        )
+    
+    try:
+        # Get user's conversations
+        all_conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=200,  # Search through recent 200 conversations
+            offset=0
+        )
+        
+        search_results = []
+        query_lower = query.lower()
+        
+        for conv in all_conversations.get("conversations", []):
+            relevance_score = 0
+            matched_context = []
+            
+            # Check title match
+            title = conv.get("title", "")
+            if query_lower in title.lower():
+                relevance_score += 10
+                matched_context.append(f"Title: {title}")
+            
+            # Check last message match
+            last_msg = conv.get("last_message", "")
+            if query_lower in last_msg.lower():
+                relevance_score += 8
+                # Find the matching snippet
+                start_idx = max(0, last_msg.lower().find(query_lower) - 20)
+                end_idx = min(len(last_msg), start_idx + 60)
+                snippet = last_msg[start_idx:end_idx]
+                matched_context.append(f"Message: ...{snippet}...")
+            
+            # Check agent role match
+            agent_role = conv.get("agent_role", "")
+            if query_lower in agent_role.lower():
+                relevance_score += 5
+                matched_context.append(f"Agent: {agent_role}")
+            
+            # Add conversation if relevant
+            if relevance_score > 0:
+                search_results.append({
+                    "conversation_id": conv["conversation_id"],
+                    "title": title,
+                    "relevance_score": relevance_score,
+                    "matched_context": matched_context,
+                    "agent_role": agent_role,
+                    "message_count": conv.get("message_count", 0),
+                    "last_activity": conv.get("last_message_at"),
+                    "created_at": conv.get("created_at")
+                })
+        
+        # Sort by relevance score
+        search_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+        
+        return {
+            "query": query,
+            "total_results": len(search_results),
+            "results": search_results[:20],  # Return top 20 results
+            "search_suggestions": [
+                "inventory status",
+                "order tracking", 
+                "analytics report",
+                "shipping updates"
+            ] if not search_results else []
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to perform smart search: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to perform smart search"
+        )
+
+
+@router.post("/conversations/{conversation_id}/summarize", response_model=Dict[str, Any])
+async def summarize_conversation(
+    conversation_id: str,
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Generate an AI summary of a conversation.
+    
+    Args:
+        conversation_id: Conversation identifier
+        current_user: Current authenticated user
+        
+    Returns:
+        Conversation summary with key topics and outcomes
+    """
+    user_id = current_user.get("username", "anonymous")
+    
+    try:
+        # Get conversation with all messages
+        conversation = await conversation_service.get_conversation_history(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            include_context=True
+        )
+        
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+        
+        messages = conversation.get("messages", [])
+        if len(messages) < 2:
+            return {
+                "conversation_id": conversation_id,
+                "summary": "Conversation too short to summarize",
+                "key_topics": [],
+                "outcome": "No significant outcome"
+            }
+        
+        # Simple summarization logic (in production, use AI model)
+        user_messages = [msg for msg in messages if msg.get("message_type") == "USER"]
+        ai_messages = [msg for msg in messages if msg.get("message_type") == "ASSISTANT"]
+        
+        # Extract key topics from user messages
+        key_topics = []
+        common_words = ["inventory", "order", "shipping", "analytics", "item", "stock", "delivery"]
+        
+        all_text = " ".join([msg.get("content", "") for msg in user_messages]).lower()
+        for word in common_words:
+            if word in all_text:
+                key_topics.append(word.title())
+        
+        # Create simple summary
+        summary_parts = []
+        if user_messages:
+            first_msg = user_messages[0].get("content", "")[:100]
+            summary_parts.append(f"Started with: {first_msg}...")
+        
+        if len(messages) > 4:
+            summary_parts.append(f"Extended conversation with {len(messages)} messages")
+        
+        if ai_messages:
+            last_ai_msg = ai_messages[-1].get("content", "")[:100]
+            summary_parts.append(f"Concluded with: {last_ai_msg}...")
+        
+        return {
+            "conversation_id": conversation_id,
+            "summary": " | ".join(summary_parts),
+            "key_topics": key_topics[:5],  # Top 5 topics
+            "message_count": len(messages),
+            "duration_estimation": f"~{max(1, len(messages) // 2)} minutes",
+            "agent_role": conversation.get("agent_role", "general"),
+            "outcome": "Information provided" if ai_messages else "In progress"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to summarize conversation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to summarize conversation"
+        )
+
+
+@router.post("/conversations/bulk-actions", response_model=Dict[str, Any])
+async def bulk_conversation_actions(
+    data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Perform bulk actions on multiple conversations.
+    
+    Args:
+        data: Bulk action data including conversation IDs and action type
+        current_user: Current authenticated user
+        
+    Returns:
+        Results of bulk operations
+    """
+    user_id = current_user.get("username", "anonymous")
+    conversation_ids = data.get("conversation_ids", [])
+    action = data.get("action", "")
+    
+    if not conversation_ids or not action:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Conversation IDs and action type are required"
+        )
+    
+    try:
+        results = {
+            "action": action,
+            "total_requested": len(conversation_ids),
+            "successful": 0,
+            "failed": 0,
+            "errors": []
+        }
+        
+        for conv_id in conversation_ids:
+            try:
+                if action == "delete":
+                    success = await conversation_service.delete_conversation(
+                        user_id=user_id,
+                        conversation_id=conv_id,
+                        hard_delete=False
+                    )
+                elif action == "archive":
+                    success = await conversation_service.archive_conversation(
+                        user_id=user_id,
+                        conversation_id=conv_id
+                    )
+                else:
+                    results["errors"].append(f"Unknown action: {action}")
+                    results["failed"] += 1
+                    continue
+                
+                if success:
+                    results["successful"] += 1
+                else:
+                    results["failed"] += 1
+                    results["errors"].append(f"Failed to {action} conversation {conv_id}")
+                    
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append(f"Error with {conv_id}: {str(e)}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to perform bulk actions: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to perform bulk actions"
+        )
+
+
 # Migration endpoint for moving from in-memory to persistent storage
 @router.post("/admin/migrate-conversations")
 async def migrate_conversations(
@@ -1389,4 +1807,157 @@ async def migrate_conversations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start migration"
+        )
+
+
+# Add this new endpoint after the existing user history overview endpoint
+@router.get("/users/current/history/overview", response_model=Dict[str, Any])
+async def get_current_user_history_overview(
+    period_days: int = Query(30, description="Number of days to analyze"),
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Get comprehensive history overview for the current user.
+    
+    Args:
+        period_days: Number of days to analyze
+        current_user: Current authenticated user
+        
+    Returns:
+        Current user's conversation overview with analytics
+    """
+    user_id = current_user.get("username", "anonymous")
+    
+    try:
+        # Get user's conversation statistics
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=1000,  # Get all conversations for analytics
+            offset=0
+        )
+        
+        # Calculate analytics
+        total_conversations = len(conversations.get("conversations", []))
+        today = datetime.now()
+        recent_conversations = []
+        agent_usage = {}
+        conversation_lengths = []
+        
+        for conv in conversations.get("conversations", []):
+            conv_date = datetime.fromisoformat(conv.get("created_at", today.isoformat()))
+            days_ago = (today - conv_date).days
+            
+            if days_ago <= period_days:
+                recent_conversations.append(conv)
+                
+                # Track agent role usage
+                agent_role = conv.get("agent_role", "general")
+                agent_usage[agent_role] = agent_usage.get(agent_role, 0) + 1
+                
+                # Track conversation length
+                msg_count = conv.get("message_count", 0)
+                if msg_count > 0:
+                    conversation_lengths.append(msg_count)
+        
+        # Calculate average conversation length
+        avg_length = sum(conversation_lengths) / len(conversation_lengths) if conversation_lengths else 0
+        
+        # Find most active agent
+        most_used_agent = max(agent_usage.items(), key=lambda x: x[1]) if agent_usage else ("general", 0)
+        
+        # Get conversation categories (based on first message content)
+        categories = {}
+        for conv in recent_conversations[:20]:  # Analyze recent 20 conversations
+            # Simple categorization based on keywords
+            last_msg = conv.get("last_message", "").lower()
+            if any(word in last_msg for word in ["inventory", "stock", "item"]):
+                categories["inventory"] = categories.get("inventory", 0) + 1
+            elif any(word in last_msg for word in ["order", "shipping", "delivery"]):
+                categories["orders"] = categories.get("orders", 0) + 1
+            elif any(word in last_msg for word in ["analytics", "report", "data"]):
+                categories["analytics"] = categories.get("analytics", 0) + 1
+            else:
+                categories["general"] = categories.get("general", 0) + 1
+        
+        return {
+            "user_id": user_id,
+            "period_days": period_days,
+            "overview": {
+                "total_conversations": total_conversations,
+                "recent_conversations": len(recent_conversations),
+                "average_conversation_length": round(avg_length, 1),
+                "most_used_agent": {
+                    "role": most_used_agent[0],
+                    "count": most_used_agent[1]
+                },
+                "agent_usage_breakdown": agent_usage,
+                "conversation_categories": categories,
+                "activity_trend": len(recent_conversations) > 0
+            },
+            "recent_conversations": recent_conversations[:10]  # Return 10 most recent
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get current user history overview: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get history overview"
+        )
+
+
+@router.get("/users/current/quick-history", response_model=Dict[str, Any])
+async def get_current_user_quick_history(
+    limit: int = Query(5, description="Number of recent conversations"),
+    current_user: Dict[str, Any] = Depends(get_optional_current_user)
+):
+    """
+    Get quick history for current user - optimized for UI sidebar.
+    
+    Args:
+        limit: Number of recent conversations to return
+        current_user: Current authenticated user
+        
+    Returns:
+        Quick access history data
+    """
+    user_id = current_user.get("username", "anonymous")
+    
+    try:
+        # Get recent conversations with minimal data
+        conversations = await conversation_service.get_user_conversations(
+            user_id=user_id,
+            limit=limit,
+            offset=0,
+            status="active"
+        )
+        
+        quick_history = []
+        for conv in conversations.get("conversations", []):
+            # Create quick summary
+            last_msg = conv.get("last_message", "")
+            preview = last_msg[:50] + "..." if len(last_msg) > 50 else last_msg
+            
+            quick_history.append({
+                "conversation_id": conv["conversation_id"],
+                "title": conv.get("title", preview),
+                "preview": preview,
+                "agent_role": conv.get("agent_role", "general"),
+                "message_count": conv.get("message_count", 0),
+                "last_activity": conv.get("last_message_at", conv.get("created_at")),
+                "created_at": conv.get("created_at"),
+                "is_recent": True  # All returned conversations are recent
+            })
+        
+        return {
+            "user_id": user_id,
+            "conversations": quick_history,
+            "total_available": conversations.get("total", 0),
+            "has_more": conversations.get("total", 0) > limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get quick history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get quick history"
         )

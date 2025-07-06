@@ -1,13 +1,11 @@
 import os
 from typing import Dict, List, Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv 
 
 # Load environment variables
 load_dotenv()
 
-# =============================================================================
-# BASIC CONFIGURATION
-# =============================================================================
+
 
 # Project Information
 PROJECT_NAME = "Seasonal Inventory Prediction"
@@ -29,76 +27,76 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 WMS_API_TIMEOUT = 30
 
-# =============================================================================
-# EXTERNAL API KEYS
-# =============================================================================
+# # =============================================================================
+# # EXTERNAL API KEYS
+# # =============================================================================
 
-# Kaggle API
-KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
-KAGGLE_KEY = os.getenv("KAGGLE_KEY")
+# # Kaggle API
+# KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
+# KAGGLE_KEY = os.getenv("KAGGLE_KEY")
 
-# OpenAI API (for additional AI features)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# # OpenAI API (for additional AI features)
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Weather API
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-WEATHER_API_URL = "http://api.openweathermap.org/data/2.5"
+# # Weather API
+# WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+# WEATHER_API_URL = "http://api.openweathermap.org/data/2.5"
 
-# Economic Data APIs
-FRED_API_KEY = os.getenv("FRED_API_KEY")  # Federal Reserve Economic Data
-ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # Stock market data
+# # Economic Data APIs
+# FRED_API_KEY = os.getenv("FRED_API_KEY")  # Federal Reserve Economic Data
+# ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # Stock market data
 
-# =============================================================================
-# DATA SOURCES CONFIGURATION
-# =============================================================================
+# # =============================================================================
+# # DATA SOURCES CONFIGURATION
+# # =============================================================================
 
-# Kaggle Datasets Configuration
-KAGGLE_DATASETS = {
-    "high_priority": [
-        {
-            "name": "carrie1/ecommerce-data",
-            "description": "E-commerce transaction data with seasonal patterns",
-            "target_file": "data.csv",
-            "date_column": "InvoiceDate",
-            "quantity_column": "Quantity",
-            "product_column": "StockCode"
-        },
-        {
-            "name": "mkechinov/ecommerce-behavior-data",
-            "description": "E-commerce behavior data",
-            "target_file": "2019-Oct.csv",
-            "date_column": "event_time",
-            "quantity_column": "price",
-            "product_column": "product_id"
-        },
-        {
-            "name": "olistbr/brazilian-ecommerce",
-            "description": "Brazilian e-commerce dataset",
-            "target_file": "olist_orders_dataset.csv",
-            "date_column": "order_purchase_timestamp",
-            "quantity_column": "order_item_id",
-            "product_column": "product_id"
-        }
-    ],
-    "medium_priority": [
-        {
-            "name": "shashwatwork/dataco-smart-supply-chain",
-            "description": "Supply chain dataset",
-            "target_file": "DataCoSupplyChainDataset.csv",
-            "date_column": "order date (DateOrders)",
-            "quantity_column": "Order Item Quantity",
-            "product_column": "Product Name"
-        },
-        {
-            "name": "prasad22/retail-transactions-dataset",
-            "description": "Retail transactions",
-            "target_file": "Retail_Data_Transactions.csv",
-            "date_column": "Transaction_Date",
-            "quantity_column": "Quantity",
-            "product_column": "Product_Category"
-        }
-    ]
-}
+# # Kaggle Datasets Configuration
+# KAGGLE_DATASETS = {
+#     "high_priority": [
+#         {
+#             "name": "carrie1/ecommerce-data",
+#             "description": "E-commerce transaction data with seasonal patterns",
+#             "target_file": "data.csv",
+#             "date_column": "InvoiceDate",
+#             "quantity_column": "Quantity",
+#             "product_column": "StockCode"
+#         },
+#         {
+#             "name": "mkechinov/ecommerce-behavior-data",
+#             "description": "E-commerce behavior data",
+#             "target_file": "2019-Oct.csv",
+#             "date_column": "event_time",
+#             "quantity_column": "price",
+#             "product_column": "product_id"
+#         },
+#         {
+#             "name": "olistbr/brazilian-ecommerce",
+#             "description": "Brazilian e-commerce dataset",
+#             "target_file": "olist_orders_dataset.csv",
+#             "date_column": "order_purchase_timestamp",
+#             "quantity_column": "order_item_id",
+#             "product_column": "product_id"
+#         }
+#     ],
+#     "medium_priority": [
+#         {
+#             "name": "shashwatwork/dataco-smart-supply-chain",
+#             "description": "Supply chain dataset",
+#             "target_file": "DataCoSupplyChainDataset.csv",
+#             "date_column": "order date (DateOrders)",
+#             "quantity_column": "Order Item Quantity",
+#             "product_column": "Product Name"
+#         },
+#         {
+#             "name": "prasad22/retail-transactions-dataset",
+#             "description": "Retail transactions",
+#             "target_file": "Retail_Data_Transactions.csv",
+#             "date_column": "Transaction_Date",
+#             "quantity_column": "Quantity",
+#             "product_column": "Product_Category"
+#         }
+#     ]
+# }
 
 # Data Paths
 DATA_DIR = "data"
@@ -107,9 +105,6 @@ PROCESSED_DIR = f"{DATA_DIR}/processed"
 MODELS_DIR = f"{DATA_DIR}/models"
 CACHE_DIR = f"{DATA_DIR}/cache"
 
-# =============================================================================
-# PROPHET MODEL CONFIGURATION
-# =============================================================================
 
 # Default Prophet Parameters
 PROPHET_CONFIG = {
@@ -179,9 +174,6 @@ TRAINING_CONFIG = {
     }
 }
 
-# =============================================================================
-# FEATURE ENGINEERING CONFIGURATION
-# =============================================================================
 
 # Feature Engineering Settings
 FEATURE_CONFIG = {
@@ -217,9 +209,7 @@ DATA_QUALITY = {
     "max_forecast_horizon": 365
 }
 
-# =============================================================================
-# VISUALIZATION CONFIGURATION
-# =============================================================================
+
 
 # Dashboard Configuration
 DASHBOARD_CONFIG = {
@@ -271,9 +261,7 @@ PERFORMANCE_CONFIG = {
     "use_gpu": False  # Set to True if CUDA available
 }
 
-# =============================================================================
-# LOGGING AND MONITORING
-# =============================================================================
+
 
 # Logging Configuration
 LOGGING_CONFIG = {
@@ -297,9 +285,7 @@ MONITORING_CONFIG = {
     }
 }
 
-# =============================================================================
-# BUSINESS RULES AND THRESHOLDS
-# =============================================================================
+
 
 # Business Configuration
 BUSINESS_CONFIG = {
@@ -337,9 +323,6 @@ ALERT_CONFIG = {
     }
 }
 
-# =============================================================================
-# ENVIRONMENT-SPECIFIC CONFIGURATIONS
-# =============================================================================
 
 # Environment Settings
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
@@ -362,9 +345,7 @@ elif ENVIRONMENT == "testing":
     CACHE_CONFIG["forecast_cache_ttl"] = 60  # 1 minute
     PERFORMANCE_CONFIG["max_workers"] = 1
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
+
 
 def get_kaggle_config() -> Dict[str, Any]:
     """Get Kaggle API configuration."""

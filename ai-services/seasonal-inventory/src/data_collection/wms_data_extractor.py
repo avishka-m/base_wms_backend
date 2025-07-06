@@ -24,9 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class WMSDataExtractor:
-    """
-    Extracts historical data from the WMS system for seasonal analysis.
-    """
+    #for extracting historical data from WMS
     
     def __init__(self, 
                  mongodb_url: str = MONGODB_URL,
@@ -52,7 +50,7 @@ class WMSDataExtractor:
         self.session = requests.Session()
         self.session.timeout = WMS_API_TIMEOUT
         
-        logger.info("📦 WMS Data Extractor initialized")
+        logger.info(" WMS Data Extractor initialized")
     
     async def extract_inventory_transactions(self, 
                                            start_date: datetime = None,
@@ -75,7 +73,7 @@ class WMSDataExtractor:
             if end_date is None:
                 end_date = datetime.now()
             
-            logger.info(f"📊 Extracting inventory transactions from {start_date} to {end_date}")
+            logger.info(f"Extracting inventory transactions from {start_date} to {end_date}")
             
             # Build MongoDB query
             query = {
@@ -107,7 +105,7 @@ class WMSDataExtractor:
                     cursor = collection.find(query)
                     documents = await cursor.to_list(length=None)
                     
-                    logger.info(f"   📄 {collection_name}: {len(documents)} records")
+                    logger.info(f" {collection_name}: {len(documents)} records")
                     
                     for doc in documents:
                         # Standardize the document structure
@@ -133,7 +131,7 @@ class WMSDataExtractor:
                         all_transactions.append(transaction)
                 
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to extract from {collection_name}: {e}")
+                    logger.warning(f"Failed to extract from {collection_name}: {e}")
                     continue
             
             if all_transactions:
@@ -152,15 +150,15 @@ class WMSDataExtractor:
                 # Sort by date
                 df = df.sort_values("ds").reset_index(drop=True)
                 
-                logger.info(f"✅ Extracted {len(df)} valid inventory transactions")
+                logger.info(f"Extracted {len(df)} valid inventory transactions")
                 
                 return df
             
-            logger.warning("⚠️ No inventory transactions found")
+            logger.warning("No inventory transactions found")
             return pd.DataFrame()
             
         except Exception as e:
-            logger.error(f"❌ Failed to extract inventory transactions: {e}")
+            logger.error(f" Failed to extract inventory transactions: {e}")
             return pd.DataFrame()
     
     async def extract_sales_data(self, 
@@ -182,7 +180,7 @@ class WMSDataExtractor:
             if end_date is None:
                 end_date = datetime.now()
             
-            logger.info(f"💰 Extracting sales data from {start_date} to {end_date}")
+            logger.info(f" Extracting sales data from {start_date} to {end_date}")
             
             query = {
                 "order_date": {
@@ -243,15 +241,15 @@ class WMSDataExtractor:
                 # Sort by date
                 df = df.sort_values("ds").reset_index(drop=True)
                 
-                logger.info(f"✅ Extracted {len(df)} sales records")
+                logger.info(f"Extracted {len(df)} sales records")
                 
                 return df
             
-            logger.warning("⚠️ No sales data found")
+            logger.warning(" No sales data found")
             return pd.DataFrame()
             
         except Exception as e:
-            logger.error(f"❌ Failed to extract sales data: {e}")
+            logger.error(f" Failed to extract sales data: {e}")
             return pd.DataFrame()
     
     async def extract_stock_levels(self, 
@@ -273,7 +271,7 @@ class WMSDataExtractor:
             if end_date is None:
                 end_date = datetime.now()
             
-            logger.info(f"📊 Extracting stock levels from {start_date} to {end_date}")
+            logger.info(f"Extracting stock levels from {start_date} to {end_date}")
             
             query = {
                 "updated_at": {
@@ -316,15 +314,15 @@ class WMSDataExtractor:
                 # Sort by date
                 df = df.sort_values("ds").reset_index(drop=True)
                 
-                logger.info(f"✅ Extracted {len(df)} stock level records")
+                logger.info(f" Extracted {len(df)} stock level records")
                 
                 return df
             
-            logger.warning("⚠️ No stock level data found")
+            logger.warning(" No stock level data found")
             return pd.DataFrame()
             
         except Exception as e:
-            logger.error(f"❌ Failed to extract stock levels: {e}")
+            logger.error(f"Failed to extract stock levels: {e}")
             return pd.DataFrame()
     
     def extract_via_api(self, endpoint: str, params: Dict = None) -> pd.DataFrame:
@@ -341,7 +339,7 @@ class WMSDataExtractor:
         try:
             url = f"{self.api_base_url}/{endpoint}"
             
-            logger.info(f"🌐 Extracting data from API: {endpoint}")
+            logger.info(f"Extracting data from API: {endpoint}")
             
             response = self.session.get(url, params=params)
             response.raise_for_status()
@@ -354,15 +352,15 @@ class WMSDataExtractor:
             elif isinstance(data, dict) and "data" in data:
                 df = pd.DataFrame(data["data"])
             else:
-                logger.warning(f"⚠️ Unexpected API response format from {endpoint}")
+                logger.warning(f" Unexpected API response format from {endpoint}")
                 return pd.DataFrame()
             
-            logger.info(f"✅ Extracted {len(df)} records from API")
+            logger.info(f" Extracted {len(df)} records from API")
             
             return df
             
         except Exception as e:
-            logger.error(f"❌ Failed to extract from API {endpoint}: {e}")
+            logger.error(f"Failed to extract from API {endpoint}: {e}")
             return pd.DataFrame()
     
     async def create_comprehensive_dataset(self, 
@@ -378,7 +376,7 @@ class WMSDataExtractor:
         Returns:
             Combined DataFrame with all WMS data
         """
-        logger.info("🔄 Creating comprehensive WMS dataset")
+        logger.info(" Creating comprehensive WMS dataset")
         
         # Extract all data sources
         tasks = [
@@ -440,7 +438,7 @@ class WMSDataExtractor:
             # Sort by date
             prophet_df = prophet_df.sort_values("ds").reset_index(drop=True)
             
-            logger.info(f"📊 Comprehensive dataset created with {len(prophet_df)} records")
+            logger.info(f" Comprehensive dataset created with {len(prophet_df)} records")
             
             # Save the dataset
             output_dir = Path(PROCESSED_DIR)
@@ -448,11 +446,11 @@ class WMSDataExtractor:
             
             output_file = output_dir / "wms_historical_data.csv"
             prophet_df.to_csv(output_file, index=False)
-            logger.info(f"💾 Saved WMS dataset to {output_file}")
+            logger.info(f" Saved WMS dataset to {output_file}")
             
             return prophet_df
         
-        logger.warning("⚠️ No data found to create comprehensive dataset")
+        logger.warning(" No data found to create comprehensive dataset")
         return pd.DataFrame()
     
     async def close(self):
@@ -465,7 +463,7 @@ class WMSDataExtractor:
 
 async def main():
     """Main function to demonstrate WMS data extraction."""
-    print("📦 WMS Data Extractor for Seasonal Inventory Prediction")
+    print("WMS Data Extractor for Seasonal Inventory Prediction")
     print("=" * 60)
     
     # Initialize extractor
@@ -473,11 +471,11 @@ async def main():
     
     try:
         # Extract comprehensive dataset
-        print("\n🔄 Extracting comprehensive WMS dataset...")
+        print("\nExtracting comprehensive WMS dataset...")
         df = await extractor.create_comprehensive_dataset()
         
         if not df.empty:
-            print("\n📊 WMS Dataset Summary:")
+            print("\n WMS Dataset Summary:")
             print(f"   Total records: {len(df):,}")
             print(f"   Date range: {df['ds'].min()} to {df['ds'].max()}")
             print(f"   Unique products: {df['product_id'].nunique()}")
@@ -485,14 +483,14 @@ async def main():
             print(f"   Categories: {df['category'].unique()}")
             
             # Show sample data
-            print("\n👀 Sample WMS data:")
+            print("\n Sample WMS data:")
             print(df.head().to_string())
             
         else:
-            print("⚠️ No WMS data found. Check database connection and data availability.")
+            print("No WMS data found. Check database connection and data availability.")
             
     except Exception as e:
-        logger.error(f"❌ Error in main execution: {e}")
+        logger.error(f"Error in main execution: {e}")
         
     finally:
         # Clean up

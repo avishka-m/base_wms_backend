@@ -926,6 +926,21 @@ update_packing_task_tool = create_tool(
     }
 )
 
+# Import optimized versions for better performance
+try:
+    from optimized_order_tools import (
+        optimized_check_order_tool,
+        optimized_order_create_tool
+    )
+    # Use optimized versions if available
+    check_order_tool_optimized = optimized_check_order_tool
+    order_create_tool_optimized = optimized_order_create_tool
+    print("✅ Using optimized order tools for better performance!")
+except ImportError:
+    print("⚠️  Optimized tools not found - using standard versions")
+    check_order_tool_optimized = None
+    order_create_tool_optimized = None
+
 # Export the tools
 __all__ = [
     "check_order_tool",
@@ -936,5 +951,8 @@ __all__ = [
     "create_picking_task_tool",
     "update_picking_task_tool",
     "create_packing_task_tool",
-    "update_packing_task_tool"
+    "update_packing_task_tool",
+    # Optimized versions (if available)
+    "check_order_tool_optimized",
+    "order_create_tool_optimized"
 ]

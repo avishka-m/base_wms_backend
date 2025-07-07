@@ -8,16 +8,45 @@ following the LangChain MongoDB document loader pattern.
 import os
 import logging
 from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
+from datetime import datetime, timedelta
 from pymongo import MongoClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from bson.errors import InvalidId
+import asyncio
+from functools import lru_cache
+import time
 
 # Use absolute imports for config
 from app.config import MONGODB_URL, DATABASE_NAME
 
 logger = logging.getLogger("wms_chatbot.mongodb_client")
+
+# Simple in-memory cache
+class SimpleCache:
+    def __init__(self, ttl=300):  # 5 minutes default TTL
+        self.cache = {}
+        self.ttl = ttl
+    
+    def get(self, key):
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if time.time() - timestamp < self.ttl:
+                return data
+            else:
+                del self.cache[key]
+        return None
+    
+    def set(self, key, value):
+        self.cache[key] = (value, time.time())
+    
+    def invalidate(self, pattern=None):
+        if pattern:
+            keys_to_delete = [k for k in self.cache.keys() if pattern in k]
+            for k in keys_to_delete:
+                del self.cache[k]
+        else:
+            self.cache.clear()
 
 class ChatbotMongoDBClient:
     """
@@ -26,23 +55,38 @@ class ChatbotMongoDBClient:
     """
     
     def __init__(self):
-        """Initialize the MongoDB client."""
+        """Initialize the MongoDB client with connection pooling and caching."""
         self.connection_string = MONGODB_URL
         self.db_name = DATABASE_NAME
         self._client = None
         self._async_client = None
+        
+        # Initialize cache
+        self.cache = SimpleCache(ttl=300)  # 5 minutes cache
+        
+        # Connection pool settings
+        self.client_options = {
+            'maxPoolSize': 50,
+            'minPoolSize': 5,
+            'maxIdleTimeMS': 30000,
+            'waitQueueTimeoutMS': 5000,
+            'serverSelectionTimeoutMS': 5000,
+            'connectTimeoutMS': 10000,
+            'socketTimeoutMS': 10000,
+        }
+        
         logger.info(f"ChatbotMongoDBClient initialized with DB: {self.db_name}")
     
     def get_client(self) -> MongoClient:
-        """Get or create synchronous MongoDB client."""
+        """Get or create synchronous MongoDB client with connection pooling."""
         if self._client is None:
-            self._client = MongoClient(self.connection_string)
+            self._client = MongoClient(self.connection_string, **self.client_options)
         return self._client
     
     def get_async_client(self) -> AsyncIOMotorClient:
-        """Get or create asynchronous MongoDB client."""
+        """Get or create asynchronous MongoDB client with connection pooling."""
         if self._async_client is None:
-            self._async_client = AsyncIOMotorClient(self.connection_string)
+            self._async_client = AsyncIOMotorClient(self.connection_string, **self.client_options)
         return self._async_client
     
     def get_database(self):

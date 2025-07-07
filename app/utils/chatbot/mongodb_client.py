@@ -177,6 +177,187 @@ class ChatbotMongoDBClient:
             logger.error(f"Error getting low stock items: {e}")
             return []
     
+    async def update_inventory_item(self, item_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing inventory item.
+        
+        Args:
+            item_id: ID of the inventory item to update
+            update_data: Dictionary of fields to update
+            
+        Returns:
+            Result of the update operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["inventory"]
+            
+            # Remove None values from update data
+            clean_update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            if not clean_update_data:
+                return {"success": False, "message": "No valid update data provided"}
+            
+            # Add updated_at timestamp
+            clean_update_data["updated_at"] = datetime.utcnow()
+            
+            # Perform the update
+            result = await collection.update_one(
+                {"itemID": item_id},
+                {"$set": clean_update_data}
+            )
+            
+            if result.matched_count == 0:
+                return {"success": False, "message": f"Item with ID {item_id} not found"}
+            
+            if result.modified_count > 0:
+                # Get the updated item
+                updated_item = await self.get_inventory_item_by_id(item_id)
+                return {
+                    "success": True, 
+                    "message": f"Item {item_id} updated successfully",
+                    "item": updated_item
+                }
+            else:
+                return {"success": True, "message": "No changes made (data was identical)"}
+                
+        except Exception as e:
+            logger.error(f"Error updating inventory item {item_id}: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def add_inventory_item(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add a new inventory item.
+        
+        Args:
+            item_data: Dictionary containing the new item data
+            
+        Returns:
+            Result of the add operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["inventory"]
+            
+            # Get the next itemID
+            max_item = await collection.find_one(sort=[("itemID", -1)])
+            next_item_id = (max_item.get("itemID", 0) + 1) if max_item else 1
+            
+            # Prepare the item document
+            new_item = {
+                "itemID": next_item_id,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                **item_data
+            }
+            
+            # Insert the new item
+            result = await collection.insert_one(new_item)
+            
+            if result.inserted_id:
+                # Get the inserted item
+                inserted_item = await self.get_inventory_item_by_id(next_item_id)
+                return {
+                    "success": True,
+                    "message": f"Item added successfully with ID {next_item_id}",
+                    "item": inserted_item,
+                    "item_id": next_item_id
+                }
+            else:
+                return {"success": False, "message": "Failed to insert item"}
+                
+        except Exception as e:
+            logger.error(f"Error adding inventory item: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def get_inventory_analytics(self, category: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get inventory analytics and summary statistics.
+        
+        Args:
+            category: Optional category to filter analytics
+            
+        Returns:
+            Analytics data including totals, low stock, category breakdown
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["inventory"]
+            
+            # Build filter for category if specified
+            match_filter = {}
+            if category:
+                match_filter = {"category": {"$regex": category, "$options": "i"}}
+            
+            # Aggregation pipeline for analytics
+            pipeline = [
+                {"$match": match_filter},
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_items": {"$sum": 1},
+                        "total_stock": {"$sum": "$stock_level"},
+                        "avg_stock": {"$avg": "$stock_level"},
+                        "max_stock": {"$max": "$stock_level"},
+                        "min_stock": {"$min": "$stock_level"},
+                        "categories": {"$addToSet": "$category"},
+                        "low_stock_count": {
+                            "$sum": {
+                                "$cond": [{"$lt": ["$stock_level", 10]}, 1, 0]
+                            }
+                        },
+                        "zero_stock_count": {
+                            "$sum": {
+                                "$cond": [{"$eq": ["$stock_level", 0]}, 1, 0]
+                            }
+                        }
+                    }
+                }
+            ]
+            
+            # Execute aggregation
+            cursor = collection.aggregate(pipeline)
+            analytics = await cursor.to_list(length=1)
+            
+            if not analytics:
+                return {"total_items": 0, "message": "No inventory data found"}
+            
+            result = analytics[0]
+            result.pop("_id", None)  # Remove the _id field
+            
+            # Get category breakdown
+            category_pipeline = [
+                {"$match": match_filter},
+                {
+                    "$group": {
+                        "_id": "$category",
+                        "count": {"$sum": 1},
+                        "total_stock": {"$sum": "$stock_level"},
+                        "avg_stock": {"$avg": "$stock_level"}
+                    }
+                },
+                {"$sort": {"count": -1}}
+            ]
+            
+            category_cursor = collection.aggregate(category_pipeline)
+            category_breakdown = await category_cursor.to_list(length=50)
+            
+            result["category_breakdown"] = [
+                {
+                    "category": cat["_id"],
+                    "count": cat["count"],
+                    "total_stock": cat["total_stock"],
+                    "avg_stock": round(cat["avg_stock"], 2)
+                }
+                for cat in category_breakdown
+            ]
+            
+            return self.serialize_document(result)
+            
+        except Exception as e:
+            logger.error(f"Error getting inventory analytics: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
     # Order Operations
     async def get_orders(self, filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """

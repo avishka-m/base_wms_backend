@@ -7,7 +7,11 @@ from app.tools.chatbot.inventory_tools import (
     locate_item_tool,
     low_stock_alert_tool
 )
-from app.tools.chatbot.order_tools import check_order_tool, create_picking_task_tool, update_picking_task_tool
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    create_picking_task_tool, 
+    update_picking_task_tool
+)
 from app.tools.chatbot.path_tools import path_optimize_tool
 
 class PickerAgent(BaseAgent):

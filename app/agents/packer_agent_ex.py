@@ -3,7 +3,11 @@ from .base_agent import BaseAgent
 
 # Import tools directly instead of dynamic loading
 from app.tools.chatbot.inventory_tools import inventory_query_tool, locate_item_tool
-from app.tools.chatbot.order_tools import check_order_tool, create_packing_task_tool, update_packing_task_tool
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    create_packing_task_tool, 
+    update_packing_task_tool
+)
 
 class PackerAgent(BaseAgent):
     """
@@ -21,7 +25,7 @@ class PackerAgent(BaseAgent):
             # Basic inventory tools for packers
             inventory_query_tool,
             locate_item_tool,
-            # Packing and order management
+            # Packing task management
             check_order_tool,
             create_packing_task_tool,
             update_packing_task_tool

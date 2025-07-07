@@ -429,6 +429,345 @@ class ChatbotMongoDBClient:
             logger.error(f"Error getting orders for customer {customer_id}: {e}")
             return []
     
+    async def create_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new order.
+        
+        Args:
+            order_data: Dictionary containing the new order data
+            
+        Returns:
+            Result of the create operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["orders"]
+            
+            # Get the next orderID
+            max_order = await collection.find_one(sort=[("orderID", -1)])
+            next_order_id = (max_order.get("orderID", 0) + 1) if max_order else 1
+            
+            # Prepare the order document
+            new_order = {
+                "orderID": next_order_id,
+                "order_status": "pending",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                **order_data
+            }
+            
+            # Insert the new order
+            result = await collection.insert_one(new_order)
+            
+            if result.inserted_id:
+                # Get the inserted order
+                inserted_order = await self.get_order_by_id(next_order_id)
+                return {
+                    "success": True,
+                    "message": f"Order created successfully with ID {next_order_id}",
+                    "order": inserted_order,
+                    "order_id": next_order_id
+                }
+            else:
+                return {"success": False, "message": "Failed to insert order"}
+                
+        except Exception as e:
+            logger.error(f"Error creating order: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def update_order(self, order_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing order.
+        
+        Args:
+            order_id: ID of the order to update
+            update_data: Dictionary of fields to update
+            
+        Returns:
+            Result of the update operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["orders"]
+            
+            # Remove None values from update data
+            clean_update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            if not clean_update_data:
+                return {"success": False, "message": "No valid update data provided"}
+            
+            # Add updated_at timestamp
+            clean_update_data["updated_at"] = datetime.utcnow()
+            
+            # Perform the update
+            result = await collection.update_one(
+                {"orderID": order_id},
+                {"$set": clean_update_data}
+            )
+            
+            if result.matched_count == 0:
+                return {"success": False, "message": f"Order with ID {order_id} not found"}
+            
+            if result.modified_count > 0:
+                # Get the updated order
+                updated_order = await self.get_order_by_id(order_id)
+                return {
+                    "success": True, 
+                    "message": f"Order {order_id} updated successfully",
+                    "order": updated_order
+                }
+            else:
+                return {"success": True, "message": "No changes made (data was identical)"}
+                
+        except Exception as e:
+            logger.error(f"Error updating order {order_id}: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def approve_order(self, order_id: int, approved: bool, notes: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Approve or reject an order.
+        
+        Args:
+            order_id: ID of the order to approve/reject
+            approved: True to approve, False to reject
+            notes: Optional approval/rejection notes
+            
+        Returns:
+            Result of the approval operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["orders"]
+            
+            # Prepare update data
+            status = "approved" if approved else "rejected"
+            update_data = {
+                "order_status": status,
+                "approved": approved,
+                "approval_date": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            if notes:
+                update_data["approval_notes"] = notes
+            
+            # Update the order
+            result = await collection.update_one(
+                {"orderID": order_id},
+                {"$set": update_data}
+            )
+            
+            if result.matched_count == 0:
+                return {"success": False, "message": f"Order with ID {order_id} not found"}
+            
+            if result.modified_count > 0:
+                action = "approved" if approved else "rejected"
+                updated_order = await self.get_order_by_id(order_id)
+                return {
+                    "success": True,
+                    "message": f"Order {order_id} {action} successfully",
+                    "order": updated_order
+                }
+            else:
+                return {"success": False, "message": "Failed to update order status"}
+                
+        except Exception as e:
+            logger.error(f"Error approving order {order_id}: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def create_sub_order(self, parent_order_id: int, items: List[Dict[str, Any]], reason: str) -> Dict[str, Any]:
+        """
+        Create a sub-order for partial fulfillment.
+        
+        Args:
+            parent_order_id: ID of the parent order
+            items: List of items for the sub-order
+            reason: Reason for creating the sub-order
+            
+        Returns:
+            Result of the sub-order creation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["orders"]
+            
+            # Get the parent order
+            parent_order = await self.get_order_by_id(parent_order_id)
+            if not parent_order:
+                return {"success": False, "message": f"Parent order {parent_order_id} not found"}
+            
+            # Get the next orderID
+            max_order = await collection.find_one(sort=[("orderID", -1)])
+            next_order_id = (max_order.get("orderID", 0) + 1) if max_order else 1
+            
+            # Prepare the sub-order document
+            sub_order = {
+                "orderID": next_order_id,
+                "parent_order_id": parent_order_id,
+                "customerID": parent_order.get("customerID"),
+                "order_status": "pending",
+                "order_type": "sub_order",
+                "items": items,
+                "reason": reason,
+                "shipping_address": parent_order.get("shipping_address"),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+            
+            # Insert the sub-order
+            result = await collection.insert_one(sub_order)
+            
+            if result.inserted_id:
+                # Update parent order to reference sub-order
+                await collection.update_one(
+                    {"orderID": parent_order_id},
+                    {"$addToSet": {"sub_orders": next_order_id}}
+                )
+                
+                inserted_order = await self.get_order_by_id(next_order_id)
+                return {
+                    "success": True,
+                    "message": f"Sub-order created successfully with ID {next_order_id}",
+                    "order": inserted_order,
+                    "order_id": next_order_id
+                }
+            else:
+                return {"success": False, "message": "Failed to insert sub-order"}
+                
+        except Exception as e:
+            logger.error(f"Error creating sub-order: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    # Task Management Operations
+    async def create_task(self, task_type: str, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new task (picking or packing).
+        
+        Args:
+            task_type: Type of task ('picking' or 'packing')
+            task_data: Dictionary containing the task data
+            
+        Returns:
+            Result of the task creation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["tasks"]
+            
+            # Get the next taskID
+            max_task = await collection.find_one(sort=[("taskID", -1)])
+            next_task_id = (max_task.get("taskID", 0) + 1) if max_task else 1
+            
+            # Prepare the task document
+            new_task = {
+                "taskID": next_task_id,
+                "task_type": task_type,
+                "status": "pending",
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                **task_data
+            }
+            
+            # Insert the new task
+            result = await collection.insert_one(new_task)
+            
+            if result.inserted_id:
+                # Get the inserted task
+                inserted_task = await self.get_task_by_id(next_task_id)
+                return {
+                    "success": True,
+                    "message": f"{task_type.title()} task created successfully with ID {next_task_id}",
+                    "task": inserted_task,
+                    "task_id": next_task_id
+                }
+            else:
+                return {"success": False, "message": "Failed to insert task"}
+                
+        except Exception as e:
+            logger.error(f"Error creating {task_type} task: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def get_task_by_id(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single task by taskID."""
+        try:
+            db = await self.get_async_database()
+            collection = db["tasks"]
+            
+            task = await collection.find_one({"taskID": task_id})
+            
+            if task:
+                return self.serialize_document(task)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting task {task_id}: {e}")
+            return None
+    
+    async def update_task(self, task_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing task.
+        
+        Args:
+            task_id: ID of the task to update
+            update_data: Dictionary of fields to update
+            
+        Returns:
+            Result of the update operation
+        """
+        try:
+            db = await self.get_async_database()
+            collection = db["tasks"]
+            
+            # Remove None values from update data
+            clean_update_data = {k: v for k, v in update_data.items() if v is not None}
+            
+            if not clean_update_data:
+                return {"success": False, "message": "No valid update data provided"}
+            
+            # Add updated_at timestamp
+            clean_update_data["updated_at"] = datetime.utcnow()
+            
+            # Perform the update
+            result = await collection.update_one(
+                {"taskID": task_id},
+                {"$set": clean_update_data}
+            )
+            
+            if result.matched_count == 0:
+                return {"success": False, "message": f"Task with ID {task_id} not found"}
+            
+            if result.modified_count > 0:
+                # Get the updated task
+                updated_task = await self.get_task_by_id(task_id)
+                return {
+                    "success": True, 
+                    "message": f"Task {task_id} updated successfully",
+                    "task": updated_task
+                }
+            else:
+                return {"success": True, "message": "No changes made (data was identical)"}
+                
+        except Exception as e:
+            logger.error(f"Error updating task {task_id}: {e}")
+            return {"success": False, "message": f"Database error: {str(e)}"}
+    
+    async def get_tasks_by_type(self, task_type: str, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get tasks by type and optionally by status."""
+        try:
+            db = await self.get_async_database()
+            collection = db["tasks"]
+            
+            filter_criteria = {"task_type": task_type}
+            if status:
+                filter_criteria["status"] = status
+            
+            cursor = collection.find(filter_criteria).sort("created_at", -1)
+            tasks = await cursor.to_list(length=100)
+            
+            return [self.serialize_document(task) for task in tasks]
+        except Exception as e:
+            logger.error(f"Error getting {task_type} tasks: {e}")
+            return []
+    
     # Location Operations
     async def get_locations(self, filter_criteria: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Get storage locations."""

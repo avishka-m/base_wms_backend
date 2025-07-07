@@ -10,7 +10,14 @@ from app.tools.chatbot.inventory_tools import (
     low_stock_alert_tool,
     stock_movement_tool
 )
-from app.tools.chatbot.order_tools import check_order_tool, create_sub_order_tool
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    order_create_tool,
+    order_update_tool,
+    create_sub_order_tool,
+    create_picking_task_tool,
+    create_packing_task_tool
+)
 from app.tools.chatbot.return_tools import process_return_tool
 from app.tools.chatbot.warehouse_tools import check_supplier_tool
 
@@ -34,9 +41,14 @@ class ClerkAgent(BaseAgent):
             locate_item_tool,
             low_stock_alert_tool,
             stock_movement_tool,
-            # Order and return processing
+            # Order management and processing
             check_order_tool,
+            order_create_tool,
+            order_update_tool,
             create_sub_order_tool,
+            # Task creation (but not task updates - that's for workers)
+            create_picking_task_tool,
+            create_packing_task_tool,
             process_return_tool,
             # Supplier management
             check_supplier_tool

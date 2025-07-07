@@ -11,7 +11,17 @@ from app.tools.chatbot.inventory_tools import (
     low_stock_alert_tool,
     stock_movement_tool
 )
-from app.tools.chatbot.order_tools import check_order_tool, approve_orders_tool
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    order_create_tool,
+    order_update_tool,
+    approve_orders_tool,
+    create_sub_order_tool,
+    create_picking_task_tool,
+    update_picking_task_tool,
+    create_packing_task_tool,
+    update_packing_task_tool
+)
 from app.tools.chatbot.warehouse_tools import worker_manage_tool, check_analytics_tool, system_manage_tool, check_anomalies_tool
 
 class ManagerAgent(BaseAgent):
@@ -35,9 +45,17 @@ class ManagerAgent(BaseAgent):
             locate_item_tool,
             low_stock_alert_tool,
             stock_movement_tool,
-            # Order management
+            # Complete order management suite for managers
             check_order_tool,
+            order_create_tool,
+            order_update_tool,
             approve_orders_tool,
+            create_sub_order_tool,
+            # Task management
+            create_picking_task_tool,
+            update_picking_task_tool,
+            create_packing_task_tool,
+            update_packing_task_tool,
             # Warehouse management
             worker_manage_tool,
             check_analytics_tool,

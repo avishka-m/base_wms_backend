@@ -2,7 +2,15 @@ from typing import List, Dict, Any, Optional
 from .base_agent import BaseAgent
 
 # Import tools directly instead of dynamic loading
-from app.tools.chatbot.inventory_tools import inventory_query_tool, inventory_update_tool , inventory_analytics_tool
+from app.tools.chatbot.inventory_tools import (
+    inventory_query_tool, 
+    inventory_add_tool,
+    inventory_update_tool, 
+    inventory_analytics_tool,
+    locate_item_tool,
+    low_stock_alert_tool,
+    stock_movement_tool
+)
 from app.tools.chatbot.order_tools import check_order_tool, approve_orders_tool
 from app.tools.chatbot.warehouse_tools import worker_manage_tool, check_analytics_tool, system_manage_tool, check_anomalies_tool
 
@@ -19,11 +27,18 @@ class ManagerAgent(BaseAgent):
         
         # Set the tools directly - this avoids the dynamic loading issues
         self.tools = [
+            # Complete inventory management suite for managers
             inventory_query_tool,
+            inventory_add_tool,
             inventory_update_tool,
             inventory_analytics_tool,
+            locate_item_tool,
+            low_stock_alert_tool,
+            stock_movement_tool,
+            # Order management
             check_order_tool,
             approve_orders_tool,
+            # Warehouse management
             worker_manage_tool,
             check_analytics_tool,
             system_manage_tool,

@@ -54,11 +54,12 @@ Start the development server with:
 uvicorn app.main:app --reload
 ```
 
-The API will be available at http://localhost:8000
+The API will be available at http://localhost:8002
 
 Interactive API documentation is automatically generated and available at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+
+- Swagger UI: http://localhost:8002/docs
+- ReDoc: http://localhost:8002/redoc
 
 ## API Structure
 

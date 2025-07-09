@@ -5,12 +5,14 @@
 ### Step 1: Environment Setup
 
 #### 1.1 Install Dependencies
+
 ```bash
 cd backend/ai-services/seasonal-inventory
 pip install -r requirements.txt
 ```
 
 #### 1.2 Configure API Keys (Run in your activated virtual environment terminal)
+
 ```bash
 # Setup Kaggle API (run this in your terminal where venv is activated)
 kaggle config set username YOUR_KAGGLE_USERNAME
@@ -25,12 +27,13 @@ $env:WMS_API_BASE_URL="http://localhost:8002/api/v1"
 # .env file content:
 # OPENAI_API_KEY=your_openai_key
 # MONGODB_URL=mongodb://localhost:27017
-# WMS_API_BASE_URL=http://localhost:8000/api/v1
+# WMS_API_BASE_URL=http://localhost:8002/api/v1
 ```
 
 ### Step 2: Data Collection Strategy
 
 #### 2.1 Kaggle Datasets Priority List
+
 ```python
 DATASETS = {
     # High Priority - Retail & Inventory
@@ -40,21 +43,21 @@ DATASETS = {
         "features": ["InvoiceDate", "Quantity", "UnitPrice", "StockCode"],
         "seasonality": "Strong yearly/monthly patterns"
     },
-    
+
     "mkechinov/ecommerce-behavior-data": {
         "description": "E-commerce behavior with time-based patterns",
-        "size": "~2GB", 
+        "size": "~2GB",
         "features": ["event_time", "product_id", "category_code", "brand"],
         "seasonality": "Daily/weekly patterns"
     },
-    
+
     "olistbr/brazilian-ecommerce": {
         "description": "Brazilian e-commerce public dataset",
         "size": "~200MB",
         "features": ["order_purchase_timestamp", "product_category"],
         "seasonality": "Regional seasonal patterns"
     },
-    
+
     # Medium Priority - Supply Chain
     "shashwatwork/dataco-smart-supply-chain": {
         "description": "Supply chain dataset with demand patterns",
@@ -62,7 +65,7 @@ DATASETS = {
         "features": ["order_date", "delivery_date", "product_name"],
         "seasonality": "Supply chain seasonality"
     },
-    
+
     "prasad22/retail-transactions-dataset": {
         "description": "Retail transactions with seasonal trends",
         "size": "~50MB",
@@ -73,6 +76,7 @@ DATASETS = {
 ```
 
 #### 2.2 Data Collection Workflow
+
 ```
 1. Kaggle Data Download → 2. WMS Historical Data → 3. External APIs → 4. Data Validation
      ↓                          ↓                       ↓                ↓
@@ -84,6 +88,7 @@ DATASETS = {
 ### Step 3: Data Processing Pipeline
 
 #### 3.1 Data Schema Standardization
+
 ```python
 STANDARD_SCHEMA = {
     "ds": "datetime64[ns]",  # Prophet required date column
@@ -102,6 +107,7 @@ STANDARD_SCHEMA = {
 ```
 
 #### 3.2 Feature Engineering Strategy
+
 ```python
 FEATURES = {
     "temporal": [
@@ -126,6 +132,7 @@ FEATURES = {
 ### Step 4: Prophet Model Configuration
 
 #### 4.1 Model Architecture
+
 ```python
 MODEL_CONFIG = {
     "base_model": {
@@ -135,13 +142,13 @@ MODEL_CONFIG = {
         "weekly_seasonality": True,
         "daily_seasonality": False
     },
-    
+
     "custom_seasonalities": [
         {"name": "monthly", "period": 30.5, "fourier_order": 5},
         {"name": "quarterly", "period": 91.25, "fourier_order": 3},
         {"name": "bi_yearly", "period": 182.5, "fourier_order": 2}
     ],
-    
+
     "holidays": {
         "include_country_holidays": ["US", "BR", "GB"],
         "custom_holidays": [
@@ -149,7 +156,7 @@ MODEL_CONFIG = {
             "Mother's Day", "Father's Day", "Valentine's Day"
         ]
     },
-    
+
     "hyperparameters": {
         "changepoint_prior_scale": [0.01, 0.05, 0.1, 0.5],
         "seasonality_prior_scale": [0.1, 1.0, 10.0],
@@ -159,6 +166,7 @@ MODEL_CONFIG = {
 ```
 
 #### 4.2 Model Training Strategy
+
 ```python
 TRAINING_STRATEGY = {
     "cross_validation": {
@@ -166,13 +174,13 @@ TRAINING_STRATEGY = {
         "period": "90 days",    # Retrain every 3 months
         "horizon": "90 days"    # Forecast 3 months ahead
     },
-    
+
     "validation_split": {
         "train_ratio": 0.8,
         "validation_ratio": 0.1,
         "test_ratio": 0.1
     },
-    
+
     "ensemble": {
         "models": ["prophet_base", "prophet_tuned", "seasonal_naive"],
         "weights": [0.6, 0.3, 0.1],
@@ -184,6 +192,7 @@ TRAINING_STRATEGY = {
 ### Step 5: Visualization Dashboard
 
 #### 5.1 Dashboard Components
+
 ```python
 DASHBOARD_COMPONENTS = {
     "forecast_charts": {
@@ -192,14 +201,14 @@ DASHBOARD_COMPONENTS = {
         "forecast_uncertainty": "Prediction intervals",
         "model_performance": "Accuracy metrics over time"
     },
-    
+
     "business_kpis": {
         "inventory_turnover": "Current vs predicted turnover",
         "stockout_risk": "Probability of stockout by product",
         "reorder_recommendations": "Automated reorder suggestions",
         "cost_savings": "Projected cost savings from optimization"
     },
-    
+
     "interactive_filters": {
         "product_category": "Filter by product category",
         "warehouse_location": "Filter by warehouse",
@@ -212,6 +221,7 @@ DASHBOARD_COMPONENTS = {
 #### 5.2 Visualization Examples
 
 **Trend Decomposition Chart:**
+
 ```
 Demand Time Series Decomposition
 ┌─────────────────────────────────────────────────────────────┐
@@ -228,6 +238,7 @@ Demand Time Series Decomposition
 ```
 
 **Seasonal Pattern Visualization:**
+
 ```
 Yearly Seasonality Pattern
    Demand Multiplier
@@ -242,10 +253,10 @@ Yearly Seasonality Pattern
         0.6 |              *
             └─────────────────────────
             Jan  Apr  Jul  Oct  Dec
-            
+
 Weekly Seasonality Pattern
-   Demand Multiplier  
-        1.3 |    
+   Demand Multiplier
+        1.3 |
             |  *   *
         1.1 | * * * *
             |*       *
@@ -259,6 +270,7 @@ Weekly Seasonality Pattern
 ### Step 6: API Integration
 
 #### 6.1 REST API Endpoints
+
 ```python
 API_ENDPOINTS = {
     "forecasting": {
@@ -267,14 +279,14 @@ API_ENDPOINTS = {
         "/api/forecast/warehouse/{warehouse_id}": "Get warehouse-level forecast",
         "/api/forecast/batch": "Batch forecast for multiple products"
     },
-    
+
     "analytics": {
         "/api/analytics/seasonality": "Get seasonal patterns analysis",
         "/api/analytics/trends": "Get trend analysis",
         "/api/analytics/accuracy": "Get model accuracy metrics",
         "/api/analytics/alerts": "Get inventory alerts and recommendations"
     },
-    
+
     "model_management": {
         "/api/model/retrain": "Trigger model retraining",
         "/api/model/status": "Get model training status",
@@ -285,47 +297,49 @@ API_ENDPOINTS = {
 ```
 
 #### 6.2 Sample API Response
+
 ```json
 {
-    "product_id": "SKU001",
-    "forecast_date": "2025-06-25",
-    "forecast_horizon": 90,
-    "predictions": [
-        {
-            "date": "2025-06-26",
-            "predicted_demand": 156.7,
-            "lower_bound": 98.2,
-            "upper_bound": 215.2,
-            "confidence_interval": 0.8,
-            "seasonal_component": 1.12,
-            "trend_component": 140.2,
-            "holiday_effect": 0.0
-        }
-    ],
-    "seasonality_insights": {
-        "peak_season": "November-December",
-        "low_season": "January-February",
-        "weekly_pattern": "Higher demand on weekends",
-        "monthly_pattern": "End-of-month surge"
-    },
-    "recommendations": {
-        "reorder_point": 450,
-        "safety_stock": 120,
-        "next_reorder_date": "2025-07-15",
-        "suggested_quantity": 800
-    },
-    "model_metadata": {
-        "model_version": "v1.2.3",
-        "training_date": "2025-06-20",
-        "accuracy_score": 0.92,
-        "data_freshness": "2 hours ago"
+  "product_id": "SKU001",
+  "forecast_date": "2025-06-25",
+  "forecast_horizon": 90,
+  "predictions": [
+    {
+      "date": "2025-06-26",
+      "predicted_demand": 156.7,
+      "lower_bound": 98.2,
+      "upper_bound": 215.2,
+      "confidence_interval": 0.8,
+      "seasonal_component": 1.12,
+      "trend_component": 140.2,
+      "holiday_effect": 0.0
     }
+  ],
+  "seasonality_insights": {
+    "peak_season": "November-December",
+    "low_season": "January-February",
+    "weekly_pattern": "Higher demand on weekends",
+    "monthly_pattern": "End-of-month surge"
+  },
+  "recommendations": {
+    "reorder_point": 450,
+    "safety_stock": 120,
+    "next_reorder_date": "2025-07-15",
+    "suggested_quantity": 800
+  },
+  "model_metadata": {
+    "model_version": "v1.2.3",
+    "training_date": "2025-06-20",
+    "accuracy_score": 0.92,
+    "data_freshness": "2 hours ago"
+  }
 }
 ```
 
 ### Step 7: Implementation Checklist
 
 #### Phase 1: Foundation (Week 1-2)
+
 - [ ] Setup project structure
 - [ ] Install dependencies
 - [ ] Configure API keys (Kaggle, OpenAI)
@@ -335,6 +349,7 @@ API_ENDPOINTS = {
 - [ ] Implement basic data preprocessing
 
 #### Phase 2: Model Development (Week 3-4)
+
 - [ ] Implement Prophet model wrapper
 - [ ] Create seasonal analysis tools
 - [ ] Setup cross-validation framework
@@ -343,6 +358,7 @@ API_ENDPOINTS = {
 - [ ] Setup automated retraining pipeline
 
 #### Phase 3: Visualization (Week 5)
+
 - [ ] Create forecast visualization charts
 - [ ] Implement seasonal pattern plots
 - [ ] Build interactive dashboard
@@ -350,6 +366,7 @@ API_ENDPOINTS = {
 - [ ] Create mobile-responsive design
 
 #### Phase 4: Integration (Week 6)
+
 - [ ] Develop REST API endpoints
 - [ ] Integrate with existing WMS database
 - [ ] Setup authentication and permissions
@@ -357,6 +374,7 @@ API_ENDPOINTS = {
 - [ ] Implement caching layer
 
 #### Phase 5: Testing & Deployment (Week 7-8)
+
 - [ ] Unit tests for all components
 - [ ] Integration tests with WMS
 - [ ] Performance testing
@@ -367,43 +385,46 @@ API_ENDPOINTS = {
 ### Step 8: Next Actions
 
 1. **Start with Data Collection**
+
    ```bash
    # Navigate to seasonal inventory directory
    cd backend/ai-services/seasonal-inventory
-   
+
    # Create directory structure
    mkdir -p {data/{datasets,processed,models},src/{data_collection,preprocessing,models,visualization,api},notebooks,tests}
-   
+
    # Install requirements
    pip install -r requirements.txt
    ```
 
 2. **Setup Kaggle Integration**
+
    ```python
    # First script to implement
    from kaggle.api.kaggle_api_extended import KaggleApi
-   
+
    api = KaggleApi()
    api.authenticate()
-   
+
    # Download priority datasets
    api.dataset_download_files('carrie1/ecommerce-data', path='data/datasets/', unzip=True)
    ```
 
 3. **Create Initial Prophet Model**
+
    ```python
    # Basic Prophet implementation
    from prophet import Prophet
    import pandas as pd
-   
+
    # Load and prepare data
    df = pd.read_csv('data/datasets/ecommerce_data.csv')
    df_prophet = df[['date', 'quantity']].rename(columns={'date': 'ds', 'quantity': 'y'})
-   
+
    # Train model
    model = Prophet()
    model.fit(df_prophet)
-   
+
    # Generate forecast
    future = model.make_future_dataframe(periods=90)
    forecast = model.predict(future)

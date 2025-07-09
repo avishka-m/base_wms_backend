@@ -19,7 +19,7 @@ kaggle config set key YOUR_KAGGLE_KEY
 # For Windows PowerShell - Setup environment variables
 $env:OPENAI_API_KEY="your_openai_key"
 $env:MONGODB_URL="mongodb://localhost:27017"
-$env:WMS_API_BASE_URL="http://localhost:8000/api/v1"
+$env:WMS_API_BASE_URL="http://localhost:8002/api/v1"
 
 # Or create a .env file in the seasonal-inventory directory
 # .env file content:

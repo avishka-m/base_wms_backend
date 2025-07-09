@@ -73,3 +73,15 @@ async def get_dashboard_metrics(
         "operations": operations_metrics,
         "warehouse": warehouse_metrics
     }
+
+@router.get("/receiving-clerk", response_model=Dict[str, Any])
+async def get_receiving_clerk_metrics(
+    days: int = Query(30, description="Number of days to analyze"),
+    current_user: Dict[str, Any] = Depends(has_role(["ReceivingClerk", "receiving_clerk", "Manager"]))
+) -> Dict[str, Any]:
+    """
+    Get receiving clerk specific metrics.
+    
+    Returns metrics for items received, items returned, and low stock items.
+    """
+    return await AnalyticsService.get_receiving_clerk_metrics(days)

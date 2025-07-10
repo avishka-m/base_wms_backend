@@ -22,20 +22,20 @@ class BatchPredictionRequest(BaseModel):
     confidence_interval: float = 0.95
     include_external_factors: bool = True
 
-class ItemAnalysisRequest(BaseModel):
-    item_id: str
-    comparison_items: Optional[List[str]] = None
-    analysis_period_days: int = 90
-    include_recommendations: bool = True
+# class ItemAnalysisRequest(BaseModel):
+#     item_id: str
+#     #comparison_items: Optional[List[str]] = None
+#     analysis_period_days: int = 90
+#     include_recommendations: bool = True
 
 class CategoryPredictionRequest(BaseModel):
     category: str
     prediction_horizon_days: int = 30
     confidence_interval: float = 0.95
 
-# Global instances (in production, consider dependency injection)
+# get the predcition services 
 def get_prediction_service():
-    """Get the seasonal prediction service instance"""
+
     from ..services.simplified_seasonal_prediction_service import get_simplified_seasonal_prediction_service
     return get_simplified_seasonal_prediction_service()
 

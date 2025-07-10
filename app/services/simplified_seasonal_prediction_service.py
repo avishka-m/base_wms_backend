@@ -1,8 +1,3 @@
-"""
-Simplified Seasonal Prediction Service
-A streamlined service that directly imports only what's needed for FastAPI integration,
-bypassing complex module dependencies that cause import issues under uvicorn.
-"""
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -12,12 +7,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class SimplifiedSeasonalPredictionService:
-    """
-    Simplified service class for seasonal inventory predictions.
 
-    This version directly handles Prophet imports and data loading
-    without relying on complex module structures.
-    """
+    #service class for seasonal inventory predictions.
+
+    #This version directly handles Prophet imports and data loading
+    #without relying on complex module structures.
+
 
     def __init__(self):
         self._forecaster = None
@@ -29,72 +24,72 @@ class SimplifiedSeasonalPredictionService:
     def _initialize_services(self):
         """Initialize the seasonal inventory services with simplified imports"""
         try:
-            logger.info("🔄 Initializing simplified seasonal prediction services...")
+            logger.info("Initializing simplified seasonal prediction services...")
 
-            # Step 1: Check if Prophet is available
+            # 1)check Prophet is available or not 
             try:
                 from prophet import Prophet
-                logger.info("✅ Prophet import successful")
+                logger.info(" Prophet import successful")
             except ImportError as e:
                 raise ImportError(f"Prophet not available: {e}")
 
-            # Step 2: Try to load the modern processed data first, fallback to old data
+            # Step 2: load the modern processed data first
             # Use absolute path calculation
             current_file = Path(__file__).resolve()
             backend_dir = current_file.parent.parent.parent
 
-            # Try modern dataset first (2022-2024)
+            #dataset
             modern_data_file = backend_dir / 'ai-services' / 'seasonal-inventory' / 'data' / 'processed' / 'daily_demand_by_product_modern.csv'
-            old_data_file = backend_dir / 'ai-services' / 'seasonal-inventory' / 'data' / 'processed' / 'daily_demand_by_product.csv'
-
-            data_file = modern_data_file if modern_data_file.exists() else old_data_file
-            data_source = "modern (2022-2024)" if modern_data_file.exists() else "legacy (2010-2011)"
+            data_file = modern_data_file
+            data_source = "modern (2022-2024)"
 
             logger.info(f"Looking for data file: {data_file}")
             logger.info(f"Data source: {data_source}")
 
             if data_file.exists():
                 self._data = pd.read_csv(data_file)
-                logger.info(f"✅ Loaded {len(self._data)} processed records from {data_source}")
+                logger.info(f"Loaded {len(self._data)} processed records from {data_source}")
 
                 # Verify data structure
                 required_columns = ['product_id', 'ds', 'y']
                 if all(col in self._data.columns for col in required_columns):
-                    logger.info("✅ Data structure validated")
+                    logger.info(" Data structure validated")
                     self._available = True
 
                     # Log data info
                     if 'category' in self._data.columns:
                         categories = self._data['category'].value_counts().to_dict()
-                        logger.info(f"🏷️ Categories found: {categories}")
+                        logger.info(f"Categories found: {categories}")
 
                     date_range = f"{self._data['ds'].min()} to {self._data['ds'].max()}"
-                    logger.info(f"📅 Data date range: {date_range}")
+                    logger.info(f"Data date range: {date_range}")
 
                 else:
                     missing_cols = [col for col in required_columns if col not in self._data.columns]
                     raise ValueError(f"Data missing required columns: {missing_cols}")
             else:
-                logger.warning("⚠️ No processed data found - service available but no data")
+                logger.warning("No processed data found - service available but no data")
                 # Service is technically available, just no data
                 self._available = True
 
-            logger.info("🎉 Simplified seasonal prediction services initialized!")
+            logger.info("seasonal prediction services initialized")
 
         except Exception as e:
             self._initialization_error = str(e)
-            logger.error(f"❌ Error initializing seasonal prediction services: {e}")
+            logger.error(f"Error initializing seasonal prediction services: {e}")
             self._available = False
 
     @property
     def is_available(self) -> bool:
-        """Check if seasonal inventory services are available"""
+        #inventory services are available or not 
         return self._available
 
     def get_initialization_error(self) -> Optional[str]:
-        """Get the initialization error if any"""
+    #error in initializing
         return self._initialization_error
 
+
+#predict demand for an item
     async def predict_item_demand(
         self,
         item_id: str,
@@ -102,16 +97,14 @@ class SimplifiedSeasonalPredictionService:
         confidence_interval: float = 0.95,
         include_external_factors: bool = True
     ) -> Dict[str, Any]:
-        """
-        Predict demand for a specific item using Prophet directly.
-        """
+    
         if not self._available:
             return {
                 "status": "service_disabled",
                 "message": f"Service unavailable: {self._initialization_error or 'Unknown error'}",
                 "item_id": item_id,
                 "success": False,
-                "note": "✅ NumPy/Prophet compatibility confirmed - Prophet 1.1.7 + NumPy 2.3.1 working"
+                "note": " NumPy/Prophet compatibility confirmed - Prophet 1.1.7 + NumPy 2.3.1 working"
             }
 
         if self._data is None:

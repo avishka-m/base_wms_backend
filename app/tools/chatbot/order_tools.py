@@ -3,342 +3,226 @@ from pydantic import BaseModel, Field
 
 # Use absolute imports instead of relative imports
 from app.tools.chatbot.base_tool import WMSBaseTool, create_tool
-from app.utils.chatbot.api_client import api_client
+from app.utils.chatbot.mongodb_client import chatbot_mongodb_client
 from app.utils.chatbot.knowledge_base import knowledge_base
+from app.utils.chatbot.demo_data import get_demo_orders, is_api_error
 
 # Define order query tool
-def check_order_func(order_id: int) -> str:
-    """Check the status and details of a specific order."""
+async def order_query_func(order_id: Optional[int] = None,
+                     customer_id: Optional[int] = None,
+                     status: Optional[str] = None,
+                     priority: Optional[str] = None,
+                     date_from: Optional[str] = None,
+                     date_to: Optional[str] = None) -> str:
+    """Query orders based on various criteria using direct MongoDB access."""
+    
     try:
-        order = api_client.get_order(order_id)
-        
-        if not order:
-            return f"No order found with ID {order_id}."
+        # If order_id is provided, do a direct lookup
+        if order_id is not None:
+            order = await chatbot_mongodb_client.get_order_by_id(order_id)
             
-        # Format the response
-        result = f"Order Details for Order #{order_id}:\n\n"
-        result += f"Status: {order.get('status')}\n"
-        result += f"Customer: {order.get('customer_name')} (ID: {order.get('customer_id')})\n"
-        result += f"Created: {order.get('created_at')}\n"
-        result += f"Updated: {order.get('updated_at')}\n"
-        result += f"Total Items: {len(order.get('items', []))}\n"
-        result += f"Total Value: ${order.get('total_value')}\n\n"
-        
-        # Order items
-        result += "Order Items:\n"
-        result += "-" * 50 + "\n"
-        
-        for item in order.get('items', []):
-            result += f"- {item.get('quantity')}x {item.get('item_name')} (SKU: {item.get('sku')})\n"
-            result += f"  Price: ${item.get('unit_price')} each, Subtotal: ${item.get('subtotal')}\n"
-            result += f"  Status: {item.get('status')}\n"
-        
-        result += "-" * 50 + "\n\n"
-        
-        # Related tasks
-        if order.get('picking_tasks'):
-            result += "Picking Tasks:\n"
-            for task in order.get('picking_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Created: {task.get('created_at')}\n"
-            result += "\n"
+            if not order:
+                return f"Order with ID {order_id} not found in the database."
             
-        if order.get('packing_tasks'):
-            result += "Packing Tasks:\n"
-            for task in order.get('packing_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Created: {task.get('created_at')}\n"
-            result += "\n"
+            # Format single order response
+            result = "Found order:\n\n"
+            result += f"Order ID: {order.get('orderID')}\n"
+            result += f"Customer ID: {order.get('customerID')}\n"
+            result += f"Status: {order.get('order_status')}\n"
+            result += f"Priority: {order.get('priority', 'Normal')}\n"
+            result += f"Total Amount: ${order.get('total_amount', 'N/A')}\n"
+            result += f"Order Date: {order.get('order_date', 'N/A')}\n"
+            result += f"Shipping Address: {order.get('shipping_address', 'N/A')}\n"
+            result += f"Assigned Worker: {order.get('assigned_worker', 'None')}\n"
+            result += f"Notes: {order.get('notes', 'N/A')}\n"
             
-        if order.get('shipping_tasks'):
-            result += "Shipping Tasks:\n"
-            for task in order.get('shipping_tasks'):
-                result += f"- Task #{task.get('id')}: {task.get('status')}\n"
-                result += f"  Assigned to: {task.get('worker_name')}\n"
-                result += f"  Vehicle: {task.get('vehicle_name')} (ID: {task.get('vehicle_id')})\n"
-                result += f"  Created: {task.get('created_at')}\n"
+            # Add order items if available
+            items = order.get('items', [])
+            if items:
+                result += f"\nOrder Items ({len(items)}):\n"
+                for item in items:
+                    result += f"- Item ID: {item.get('itemID')} (Qty: {item.get('quantity', 0)}, Price: ${item.get('price', 'N/A')})\n"
+                    result += f"  Fulfilled: {item.get('fulfilled_quantity', 0)}/{item.get('quantity', 0)}\n"
+            
+            return result
+        
+        # Build filter criteria for MongoDB query
+        filter_criteria = {}
+        
+        if customer_id:
+            filter_criteria["customerID"] = customer_id
+        if status:
+            filter_criteria["order_status"] = status
+        if priority:
+            filter_criteria["priority"] = priority
+        
+        # Handle date filtering (simplified for now)
+        if date_from or date_to:
+            date_filter = {}
+            if date_from:
+                # Note: In a real implementation, you'd parse the date string
+                pass
+            if date_to:
+                # Note: In a real implementation, you'd parse the date string  
+                pass
+            if date_filter:
+                filter_criteria["order_date"] = date_filter
+        
+        # Get orders based on criteria
+        if customer_id:
+            orders = await chatbot_mongodb_client.get_orders_by_customer(customer_id)
+        elif status:
+            orders = await chatbot_mongodb_client.get_orders_by_status(status)
+        else:
+            orders = await chatbot_mongodb_client.get_orders(filter_criteria)
+        
+        if not orders:
+            return "No orders found matching your criteria."
+            
+        # Format the results
+        result = f"Found {len(orders)} order(s):\n\n"
+        for order in orders:
+            result += f"Order ID: {order.get('orderID')}\n"
+            result += f"Customer ID: {order.get('customerID')}\n"
+            result += f"Status: {order.get('order_status')}\n"
+            result += f"Priority: {order.get('priority', 'Normal')}\n"
+            result += f"Total: ${order.get('total_amount', 'N/A')}\n"
+            result += f"Order Date: {order.get('order_date', 'N/A')}\n"
+            result += f"Assigned Worker: {order.get('assigned_worker', 'None')}\n"
+            result += "-" * 40 + "\n"
             
         return result
+        
     except Exception as e:
-        return f"Error retrieving order: {str(e)}"
+        # Fallback to demo data on database error
+        try:
+            orders = get_demo_orders(
+                order_id=order_id, customer_id=customer_id, status=status, priority=priority
+            )
+            if not orders:
+                return "No orders found matching your criteria."
+            
+            result = "Found the following orders (Demo data - Database error):\n\n"
+            for order in orders:
+                result += f"Order ID: {order.get('id')}\n"
+                result += f"Customer ID: {order.get('customer_id')}\n"
+                result += f"Status: {order.get('status')}\n"
+                result += f"Priority: {order.get('priority', 'Normal')}\n"
+                result += f"Total: ${order.get('total_amount', 'N/A')}\n"
+                result += f"Created: {order.get('created_at', 'N/A')}\n"
+                result += "-" * 40 + "\n"
+            
+            return result
+        except:
+            return f"Error querying orders: {str(e)}"
+
+# Define order create tool
+async def order_create_func(customer_id: int,
+                      items: List[Dict[str, Any]],
+                      shipping_address: str,
+                      priority: Optional[str] = "normal",
+                      notes: Optional[str] = None) -> str:
+    """Create a new order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Order creation operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to create new orders.")
+
+# Define order update tool
+async def order_update_func(order_id: int,
+                      status: Optional[str] = None,
+                      priority: Optional[str] = None,
+                      shipping_address: Optional[str] = None,
+                      notes: Optional[str] = None) -> str:
+    """Update an existing order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Order update operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to update orders.")
 
 # Define create sub-order tool
-def create_sub_order_func(parent_order_id: int, 
+async def create_sub_order_func(parent_order_id: int, 
                          items: List[Dict[str, Any]],
                          reason: str) -> str:
-    """Create a sub-order for partial fulfillment of a parent order."""
-    try:
-        # First check if the parent order exists
-        parent_order = api_client.get_order(parent_order_id)
-        if not parent_order:
-            return f"Error: Parent order {parent_order_id} does not exist."
-        
-        # Create the sub-order data
-        sub_order_data = {
-            "parent_order_id": parent_order_id,
-            "items": items,
-            "reason": reason,
-            "is_sub_order": True
-        }
-        
-        # Submit the sub-order
-        response = api_client.post("orders", sub_order_data)
-        
-        return f"Successfully created sub-order {response.get('id')} for parent order {parent_order_id}."
-        
-    except Exception as e:
-        return f"Error creating sub-order: {str(e)}"
+    """Create a sub-order for partial fulfillment of a parent order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Sub-order operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to create sub-orders.")
 
 # Define approve orders tool
-def approve_orders_func(order_id: int, approved: bool, notes: Optional[str] = None) -> str:
-    """Approve or reject an order."""
-    try:
-        # Check if the order exists
-        order = api_client.get_order(order_id)
-        if not order:
-            return f"Error: Order {order_id} does not exist."
-            
-        # Prepare approval data
-        approval_data = {
-            "approved": approved,
-            "status": "Processing" if approved else "Rejected"
-        }
-        
-        if notes:
-            approval_data["approval_notes"] = notes
-            
-        # Update the order
-        response = api_client.put("orders", order_id, approval_data)
-        
-        if approved:
-            return f"Successfully approved order {order_id}. New status: Processing."
-        else:
-            return f"Order {order_id} has been rejected. New status: Rejected."
-            
-    except Exception as e:
-        return f"Error approving order: {str(e)}"
+async def approve_orders_func(order_id: int, approved: bool, notes: Optional[str] = None) -> str:
+    """Approve or reject an order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Order approval operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to approve/reject orders.")
 
 # Define create picking task tool
-def create_picking_task_func(order_id: int, 
+async def create_picking_task_func(order_id: int, 
                             worker_id: Optional[int] = None,
                             priority: Optional[str] = None,
                             notes: Optional[str] = None) -> str:
-    """Create a picking task for an order."""
-    try:
-        # Check if the order exists
-        order = api_client.get_order(order_id)
-        if not order:
-            return f"Error: Order {order_id} does not exist."
-            
-        # Check if a picking task already exists
-        existing_tasks = api_client.get("picking", {"order_id": order_id})
-        if existing_tasks:
-            return f"A picking task already exists for order {order_id}: Task ID {existing_tasks[0].get('id')}"
-            
-        # Prepare task data
-        task_data = {
-            "order_id": order_id,
-            "status": "Pending"
-        }
-        
-        if worker_id:
-            # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
-            if not worker:
-                return f"Error: Worker {worker_id} does not exist."
-            task_data["worker_id"] = worker_id
-            
-        if priority:
-            valid_priorities = ["low", "medium", "high", "urgent"]
-            if priority.lower() not in valid_priorities:
-                return f"Error: Invalid priority. Must be one of {valid_priorities}"
-            task_data["priority"] = priority.lower()
-            
-        if notes:
-            task_data["notes"] = notes
-            
-        # Create the picking task
-        response = api_client.post("picking", task_data)
-        
-        return f"Successfully created picking task {response.get('id')} for order {order_id}."
-        
-    except Exception as e:
-        return f"Error creating picking task: {str(e)}"
+    """Create a picking task for an order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Picking task operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to create picking tasks.")
 
 # Define update picking task tool
-def update_picking_task_func(task_id: int, 
+async def update_picking_task_func(task_id: int, 
                             status: Optional[str] = None,
                             worker_id: Optional[int] = None,
                             notes: Optional[str] = None) -> str:
-    """Update the status of a picking task."""
-    try:
-        # Check if the task exists
-        task = api_client.get_by_id("picking", task_id)
-        if not task:
-            return f"Error: Picking task {task_id} does not exist."
-            
-        # Prepare update data
-        update_data = {}
-        
-        if status:
-            valid_statuses = ["pending", "in_progress", "completed", "cancelled"]
-            if status.lower() not in valid_statuses:
-                return f"Error: Invalid status. Must be one of {valid_statuses}"
-            update_data["status"] = status.lower()
-            
-        if worker_id:
-            # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
-            if not worker:
-                return f"Error: Worker {worker_id} does not exist."
-            update_data["worker_id"] = worker_id
-            
-        if notes:
-            update_data["notes"] = notes
-        
-        # If no updates specified
-        if not update_data:
-            return "No update fields provided. Please specify at least one field to update."
-            
-        # Update the picking task
-        response = api_client.put("picking", task_id, update_data)
-        
-        # If status is set to completed, trigger creation of a packing task
-        if status and status.lower() == "completed":
-            # Create a packing task automatically
-            order_id = task.get("order_id")
-            packing_data = {
-                "order_id": order_id,
-                "status": "Pending"
-            }
-            packing_response = api_client.post("packing", packing_data)
-            return f"Successfully updated picking task {task_id}. Status changed to completed. Packing task {packing_response.get('id')} created automatically."
-            
-        return f"Successfully updated picking task {task_id}."
-        
-    except Exception as e:
-        return f"Error updating picking task: {str(e)}"
+    """Update the status of a picking task (currently not implemented with direct MongoDB access)."""
+    return ("❌ Picking task update operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to update picking tasks.")
 
 # Define create packing task tool
-def create_packing_task_func(order_id: int, 
+async def create_packing_task_func(order_id: int, 
                             worker_id: Optional[int] = None,
                             priority: Optional[str] = None,
                             notes: Optional[str] = None) -> str:
-    """Create a packing task for an order."""
-    try:
-        # Check if the order exists
-        order = api_client.get_order(order_id)
-        if not order:
-            return f"Error: Order {order_id} does not exist."
-            
-        # Check if a packing task already exists
-        existing_tasks = api_client.get("packing", {"order_id": order_id})
-        if existing_tasks:
-            return f"A packing task already exists for order {order_id}: Task ID {existing_tasks[0].get('id')}"
-            
-        # Check if a picking task has been completed
-        picking_tasks = api_client.get("picking", {"order_id": order_id})
-        if not picking_tasks:
-            return f"Error: No picking task exists for order {order_id}. Create a picking task first."
-            
-        if picking_tasks[0].get("status") != "completed":
-            return f"Error: Picking task for order {order_id} has not been completed yet. Status: {picking_tasks[0].get('status')}"
-            
-        # Prepare task data
-        task_data = {
-            "order_id": order_id,
-            "status": "Pending"
-        }
-        
-        if worker_id:
-            # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
-            if not worker:
-                return f"Error: Worker {worker_id} does not exist."
-            task_data["worker_id"] = worker_id
-            
-        if priority:
-            valid_priorities = ["low", "medium", "high", "urgent"]
-            if priority.lower() not in valid_priorities:
-                return f"Error: Invalid priority. Must be one of {valid_priorities}"
-            task_data["priority"] = priority.lower()
-            
-        if notes:
-            task_data["notes"] = notes
-            
-        # Create the packing task
-        response = api_client.post("packing", task_data)
-        
-        return f"Successfully created packing task {response.get('id')} for order {order_id}."
-        
-    except Exception as e:
-        return f"Error creating packing task: {str(e)}"
+    """Create a packing task for an order (currently not implemented with direct MongoDB access)."""
+    return ("❌ Packing task operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to create packing tasks.")
 
 # Define update packing task tool
-def update_packing_task_func(task_id: int, 
+async def update_packing_task_func(task_id: int, 
                             status: Optional[str] = None,
                             worker_id: Optional[int] = None,
                             notes: Optional[str] = None) -> str:
-    """Update the status of a packing task."""
-    try:
-        # Check if the task exists
-        task = api_client.get_by_id("packing", task_id)
-        if not task:
-            return f"Error: Packing task {task_id} does not exist."
-            
-        # Prepare update data
-        update_data = {}
-        
-        if status:
-            valid_statuses = ["pending", "in_progress", "completed", "cancelled"]
-            if status.lower() not in valid_statuses:
-                return f"Error: Invalid status. Must be one of {valid_statuses}"
-            update_data["status"] = status.lower()
-            
-        if worker_id:
-            # Verify the worker exists
-            worker = api_client.get_by_id("workers", worker_id)
-            if not worker:
-                return f"Error: Worker {worker_id} does not exist."
-            update_data["worker_id"] = worker_id
-            
-        if notes:
-            update_data["notes"] = notes
-        
-        # If no updates specified
-        if not update_data:
-            return "No update fields provided. Please specify at least one field to update."
-            
-        # Update the packing task
-        response = api_client.put("packing", task_id, update_data)
-        
-        # If status is set to completed, trigger creation of a shipping task
-        if status and status.lower() == "completed":
-            # Create a shipping task automatically
-            order_id = task.get("order_id")
-            shipping_data = {
-                "order_id": order_id,
-                "status": "Pending"
-            }
-            shipping_response = api_client.post("shipping", shipping_data)
-            return f"Successfully updated packing task {task_id}. Status changed to completed. Shipping task {shipping_response.get('id')} created automatically."
-            
-        return f"Successfully updated packing task {task_id}."
-        
-    except Exception as e:
-        return f"Error updating packing task: {str(e)}"
+    """Update the status of a packing task (currently not implemented with direct MongoDB access)."""
+    return ("❌ Packing task update operations are not yet implemented with direct database access. "
+            "This feature will be available in a future update. "
+            "For now, please use the web interface to update packing tasks.")
 
 # Create the tools
 check_order_tool = create_tool(
     name="check_order",
     description="Check the status and details of a specific order",
-    function=check_order_func,
+    function=order_query_func,
     arg_descriptions={
         "order_id": {
-            "type": int, 
+            "type": Optional[int], 
             "description": "ID of the order to check"
+        },
+        "customer_id": {
+            "type": Optional[int], 
+            "description": "ID of the customer associated with the order"
+        },
+        "status": {
+            "type": Optional[str], 
+            "description": "Status of the order"
+        },
+        "priority": {
+            "type": Optional[str], 
+            "description": "Priority level of the order"
+        },
+        "date_from": {
+            "type": Optional[str], 
+            "description": "Start date for order query"
+        },
+        "date_to": {
+            "type": Optional[str], 
+            "description": "End date for order query"
         }
     }
 )

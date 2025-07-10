@@ -22,7 +22,7 @@ def create_new_user(user_data: Dict[str, Any]):
     user_doc = {
         "username": user_data["username"],
         "email": user_data["email"],
-        "full_name": user_data["full_name"],
+        "name": user_data["name"],  # Use 'name' field consistently
         "role": user_data["role"],
         "hashed_password": hashed_password,
         "disabled": False,

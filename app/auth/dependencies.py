@@ -92,3 +92,27 @@ def has_role(required_roles: list):
             )
         return current_user
     return check_role
+
+# Get current user from token (for WebSocket authentication)
+async def get_current_user_from_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Get current user from JWT token directly (for WebSocket authentication)
+    Returns None if token is invalid
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        
+        user = get_user(username=username)
+        if user is None:
+            return None
+        
+        # Check if user is active
+        if user.get("disabled"):
+            return None
+            
+        return user
+    except JWTError:
+        return None

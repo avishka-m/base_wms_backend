@@ -31,7 +31,43 @@ async def get_workers(
     
     # Execute query
     workers = list(workers_collection.find(query).skip(skip).limit(limit))
-    return workers
+    
+    # Normalize all workers
+    normalized_workers = [_normalize_worker_data(worker) for worker in workers]
+    return normalized_workers
+
+def _normalize_worker_data(worker: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize worker data to match the expected API response format.
+    
+    This handles inconsistent data structures in the database.
+    """
+    if not worker:
+        return worker
+        
+    # Create a copy to avoid modifying the original
+    normalized = worker.copy()
+    
+    # Convert string workerID to integer if needed
+    try:
+        if isinstance(normalized.get('workerID'), str):
+            # For UUID workerIDs, generate a hash-based integer
+            worker_id = normalized.get('workerID', '')
+            normalized['workerID'] = abs(hash(worker_id)) % 1000000
+    except (ValueError, TypeError):
+        normalized['workerID'] = 1
+    
+    # Ensure required fields exist with defaults
+    if 'disabled' not in normalized:
+        normalized['disabled'] = False
+    
+    if 'email' not in normalized:
+        normalized['email'] = None
+        
+    if 'phone' not in normalized:
+        normalized['phone'] = None
+    
+    return normalized
 
 # Get worker by ID
 @router.get("/{worker_id}", response_model=WorkerResponse)
@@ -60,7 +96,7 @@ async def get_worker(
             detail=f"Worker with ID {worker_id} not found"
         )
     
-    return worker
+    return _normalize_worker_data(worker)
 
 # Create new worker
 @router.post("/", response_model=WorkerResponse, status_code=status.HTTP_201_CREATED)
@@ -100,12 +136,15 @@ async def create_worker(
     # Create new user
     user_doc = create_new_user(worker_data)
     
+    # Add workerID to the user document
+    user_doc["workerID"] = next_id
+    
     # Insert worker to database
     result = workers_collection.insert_one(user_doc)
     
     # Return the created worker
     created_worker = workers_collection.find_one({"_id": result.inserted_id})
-    return created_worker
+    return _normalize_worker_data(created_worker)
 
 # Update worker
 @router.put("/{worker_id}", response_model=WorkerResponse)
@@ -164,7 +203,7 @@ async def update_worker(
     
     # Return updated worker
     updated_worker = workers_collection.find_one({"workerID": worker_id})
-    return updated_worker
+    return _normalize_worker_data(updated_worker)
 
 # Delete worker (deactivate)
 @router.delete("/{worker_id}", response_model=Dict[str, Any])

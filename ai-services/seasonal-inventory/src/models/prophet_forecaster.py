@@ -20,7 +20,8 @@ from prophet.plot import plot_cross_validation_metric
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from config import PROPHET_CONFIG, MODELS_DIR, PROCESSED_DIR
+from ..config import PROPHET_CONFIG, MODELS_DIR, PROCESSED_DIR
+from base_wms_backend.app.services.inventory_service import InventoryService
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -50,9 +51,9 @@ class ProphetForecaster:
         logger.info(f"Prophet Forecaster initialized for product: {product_id or 'ALL'}")
     
     def prepare_data(self, data: pd.DataFrame, target_column: str = 'y') -> pd.DataFrame:
-        """
-        Prepare data for Prophet training.
         
+        #Prepare data for Prophet training.
+        """'''
         Args:
             data: Input DataFrame
             target_column: Name of the target variable column
@@ -190,7 +191,7 @@ class ProphetForecaster:
         external_regressors = getattr(self.model_config, 'external_features', None)
         if external_regressors is None:
             try:
-                from config import FEATURE_CONFIG
+                from ..config import FEATURE_CONFIG
                 external_regressors = FEATURE_CONFIG.get("external_features", [])
             except ImportError:
                 external_regressors = []
@@ -633,6 +634,13 @@ def quick_forecast_from_database() -> Dict:
             training_df = forecaster.training_data.copy()
             # Generate forecast
             forecast = forecaster.predict(periods=90)
+            # Save each day's forecast to the database
+            for _, row in forecast.iterrows():
+                InventoryService.save_demand_forecast(
+                    product_id=str(product_id),
+                    date=row['ds'],
+                    predicted_demand=row['yhat']
+                )
             # Get summary
             summary = forecaster.get_forecast_summary()
             # Save model
@@ -750,4 +758,4 @@ if __name__ == "__main__":
         print(forecast_df[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
     else:
         print("No product found for example forecast.")
-        
+

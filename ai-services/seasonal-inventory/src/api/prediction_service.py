@@ -9,7 +9,7 @@ from pathlib import Path
 from data_collection.wms_data_extractor import WMSDataExtractor
 # from data_orchestrator import SeasonalDataOrchestrator
 from models.prophet_forecaster import SeasonalProphetForecaster
-from config import PROCESSED_DIR, MODELS_DIR
+from ..config import PROCESSED_DIR, MODELS_DIR
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -213,19 +213,19 @@ class InventoryPredictionService:
         logger.info("Starting instant prediction pipeline")
         
         try:
-            # Step 1: Collect data from database
+            # data from database
             data = await self.collect_and_prepare_data()
             
             if data.empty:
                 return {'error': 'No data available for predictions'}
             
-            # Step 2: Train models
+            # Train models
             trained_models = self.train_product_models(data, product_ids)
             
-            # Step 3: Generate predictions
+            # Generate predictions
             predictions = self.generate_predictions(trained_models, forecast_days)
             
-            # Step 4: Create summary report
+            #Create summary report
             summary_report = self._create_summary_report(predictions)
             
             logger.info("Instant predictions completed successfully!")
@@ -278,7 +278,7 @@ class InventoryPredictionService:
             return
         
         print("\nINVENTORY PREDICTION RESULTS")
-        print("=" * 50)
+        #print(50)
         
         # Data info
         data_info = results['data_info']

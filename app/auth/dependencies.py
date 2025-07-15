@@ -6,6 +6,8 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
+import logging
+logger = logging.getLogger(__name__)
 
 from ..config import SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES
 from ..utils.database import get_collection
@@ -103,16 +105,17 @@ async def get_current_user_from_token(token: str) -> Optional[Dict[str, Any]]:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         username: str = payload.get("sub")
         if username is None:
+            logger.error("WebSocket Auth: Token missing 'sub' (username) field.")
             return None
-        
         user = get_user(username=username)
         if user is None:
+            logger.error(f"WebSocket Auth: No user found for username '{username}'.")
             return None
-        
-        # Check if user is active
         if user.get("disabled"):
+            logger.error(f"WebSocket Auth: User '{username}' is disabled.")
             return None
-            
+        logger.info(f"WebSocket Auth: User '{username}' authenticated successfully.")
         return user
-    except JWTError:
+    except JWTError as e:
+        logger.error(f"WebSocket Auth: JWTError - {e}")
         return None

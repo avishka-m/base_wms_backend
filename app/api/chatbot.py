@@ -1,5 +1,5 @@
 """
-Enhanced chat routes for the WMS Chatbot API with persistent storage.
+chat routes for the WMS Chatbot API with persistent storage.
 Supports advanced features including search, analytics, file uploads, and data export.
 """
 

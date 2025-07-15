@@ -17,8 +17,9 @@ from .analytics import router as analytics_router
 from .predictions import router as predictions_router
 from .workflow import router as workflow_router
 from .role_based_orders import router as role_based_router
-from .enhanced_chatbot_routes import router as chatbot_router  # Enhanced chatbot with persistent storage
+from .chatbot import router as chatbot_router  # Enhanced chatbot with persistent storage
 from .websocket_routes import router as websocket_router
+from .anomaly_detection import router as anomaly_detection_router  # Beginner-friendly anomaly detection
 
 # Create main API router
 api_router = APIRouter()
@@ -40,5 +41,6 @@ api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytic
 api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])
 api_router.include_router(role_based_router, prefix="/role-based", tags=["Role-Based Operations"])
 api_router.include_router(workflow_router, prefix="/workflow", tags=["Workflow Management"])
-api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot Enhanced"])  # Enhanced chatbot with persistent storage
+api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot"])  # Enhanced chatbot with persistent storage
+api_router.include_router(anomaly_detection_router, prefix="/anomaly-detection", tags=["Anomaly Detection"])  # Beginner-friendly anomaly detection
 api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates

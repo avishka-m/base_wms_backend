@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import re
 from collections import defaultdict, deque
+from langsmith import traceable
 
 # Add current directory to path for imports
 current_dir = os.path.dirname(__file__)
@@ -427,6 +428,7 @@ class EnhancedAgentService:
         # Sort by suitability score
         return sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
     
+    @traceable(name="agent_selection", run_type="chain")
     def select_best_agent(
         self, 
         query: str, 
@@ -593,6 +595,7 @@ class EnhancedAgentService:
             # Decrease preference
             self.user_agent_preferences[user_role][agent_role] = max(-0.5, current_score - 0.1)
     
+    @traceable(name="agent_process_message", run_type="chain")
     async def process_message(
         self, 
         message: str, 

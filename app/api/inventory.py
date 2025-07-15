@@ -190,3 +190,4 @@ async def check_inventory_anomalies(
     """
     anomalies = await InventoryService.check_inventory_anomalies()
     return anomalies
+

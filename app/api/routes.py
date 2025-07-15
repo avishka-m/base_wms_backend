@@ -21,6 +21,7 @@ from .enhanced_chatbot_routes import router as chatbot_router  # Enhanced chatbo
 from .websocket_routes import router as websocket_router
 from .storage_history import router as storage_history_router
 from .seed_data import router as seed_data_router
+from .inventory_increases import router as inventory_increases_router
 
 # Create main API router
 api_router = APIRouter()
@@ -46,3 +47,4 @@ api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot E
 api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates
 api_router.include_router(storage_history_router, prefix="/storage-history", tags=["Storage History"])
 api_router.include_router(seed_data_router, prefix="/seed-data", tags=["Seed Data"])
+api_router.include_router(inventory_increases_router, prefix="/inventory-increases", tags=["Inventory Increases"])

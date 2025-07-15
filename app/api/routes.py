@@ -17,9 +17,10 @@ from .analytics import router as analytics_router
 from .predictions import router as predictions_router
 from .workflow import router as workflow_router
 from .role_based_orders import router as role_based_router
-from .enhanced_chatbot_routes import router as chatbot_router  # Enhanced chatbot with persistent storage
-from .role_based_enhanced_chatbot_routes import router as role_based_chatbot_router  # Role-based enhanced chatbot features
+from .chatbot import router as chatbot_router  # Enhanced chatbot with persistent storage
+# from .role_based_enhanced_chatbot_routes import router as role_based_chatbot_router  # Role-based enhanced chatbot features
 from .websocket_routes import router as websocket_router
+from .websocket_admin import router as websocket_admin_router
 
 # Create main API router
 api_router = APIRouter()
@@ -41,6 +42,7 @@ api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytic
 api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])
 api_router.include_router(role_based_router, prefix="/role-based", tags=["Role-Based Operations"])
 api_router.include_router(workflow_router, prefix="/workflow", tags=["Workflow Management"])
-api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot Enhanced"])  # Enhanced chatbot with persistent storage
-api_router.include_router(role_based_chatbot_router, prefix="/chatbot/role-based", tags=["AI Chatbot Role-Based Features"])  # Role-based enhanced chatbot features
+api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot"])  # Enhanced chatbot with persistent storage
+# api_router.include_router(role_based_chatbot_router, prefix="/chatbot/role-based", tags=["AI Chatbot Role-Based Features"])  # Role-based enhanced chatbot features
 api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates
+api_router.include_router(websocket_admin_router, prefix="/admin", tags=["WebSocket Admin"])  # WebSocket administration

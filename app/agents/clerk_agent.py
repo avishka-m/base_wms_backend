@@ -2,8 +2,22 @@ from typing import List, Dict, Any, Optional
 from .base_agent import BaseAgent
 
 # Import tools directly instead of dynamic loading
-from app.tools.chatbot.inventory_tools import inventory_query_tool, inventory_add_tool, inventory_update_tool, locate_item_tool
-from app.tools.chatbot.order_tools import check_order_tool, create_sub_order_tool
+from app.tools.chatbot.inventory_tools import (
+    inventory_query_tool, 
+    inventory_add_tool, 
+    inventory_update_tool, 
+    locate_item_tool,
+    low_stock_alert_tool,
+    stock_movement_tool
+)
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    order_create_tool,
+    order_update_tool,
+    create_sub_order_tool,
+    create_picking_task_tool,
+    create_packing_task_tool
+)
 from app.tools.chatbot.return_tools import process_return_tool
 from app.tools.chatbot.warehouse_tools import check_supplier_tool
 
@@ -20,13 +34,23 @@ class ClerkAgent(BaseAgent):
         
         # Set the tools directly - this avoids the dynamic loading issues
         self.tools = [
+            # Inventory management tools for clerks
             inventory_query_tool,
             inventory_add_tool,
             inventory_update_tool,
             locate_item_tool,
+            low_stock_alert_tool,
+            stock_movement_tool,
+            # Order management and processing
             check_order_tool,
+            order_create_tool,
+            order_update_tool,
             create_sub_order_tool,
+            # Task creation (but not task updates - that's for workers)
+            create_picking_task_tool,
+            create_packing_task_tool,
             process_return_tool,
+            # Supplier management
             check_supplier_tool
         ]
         

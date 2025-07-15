@@ -7,27 +7,114 @@ from ..services.inventory_service import InventoryService
 
 router = APIRouter()
 
-# Get all inventory items
-@router.get("/", response_model=List[InventoryResponse])
+# OPTIMIZED: Get all inventory items with proper pagination
+@router.get("/", response_model=Dict[str, Any])
 async def get_inventory_items(
     current_user: Dict[str, Any] = Depends(get_current_active_user),
-    skip: int = 0,
-    limit: int = 100,
-    category: Optional[str] = None,
-    low_stock: bool = False
-) -> List[Dict[str, Any]]:
+    skip: int = Query(0, description="Number of items to skip", ge=0),
+    limit: int = Query(50, description="Number of items to return (max 100)", ge=1, le=100),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    low_stock: bool = Query(False, description="Filter low stock items"),
+    search: Optional[str] = Query(None, description="Search term for items")
+) -> Dict[str, Any]:
     """
-    Get all inventory items with optional filtering.
+    Get inventory items with pagination and filtering.
     
-    You can filter by category and low stock status.
+    OPTIMIZED FEATURES:
+    - Pagination with metadata (current page, total pages, etc.)
+    - Reduced default limit (50 instead of 100) for better performance
+    - Search functionality
+    - Proper error handling
     """
-    items = await InventoryService.get_inventory_items(
-        skip=skip,
-        limit=limit,
-        category=category,
-        low_stock=low_stock
-    )
-    return items
+    try:
+        # Check if we have optimized inventory service available
+        try:
+            from optimized_inventory_service import OptimizedInventoryService
+            # Use optimized service with full pagination metadata
+            result = await OptimizedInventoryService.get_inventory_items_paginated(
+                skip=skip,
+                limit=limit,
+                category=category,
+                low_stock=low_stock,
+                search=search
+            )
+            return result
+        except ImportError:
+            # Fallback to standard service
+            items = await InventoryService.get_inventory_items(
+                skip=skip,
+                limit=limit,
+                category=category,
+                low_stock=low_stock
+            )
+            
+            # Add basic pagination metadata
+            total_items = len(items) if len(items) < limit else skip + len(items) + 1  # Approximate
+            return {
+                "items": items,
+                "pagination": {
+                    "current_page": (skip // limit) + 1,
+                    "items_per_page": limit,
+                    "total_items": total_items,
+                    "has_next": len(items) == limit,
+                    "has_prev": skip > 0
+                }
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching inventory items: {str(e)}"
+        )
+
+# OPTIMIZED: Get low stock items with pagination
+@router.get("/low-stock", response_model=Dict[str, Any])
+async def get_low_stock_items(
+    current_user: Dict[str, Any] = Depends(get_current_active_user),
+    skip: int = Query(0, description="Number of items to skip", ge=0),
+    limit: int = Query(50, description="Number of items to return", ge=1, le=100)
+) -> Dict[str, Any]:
+    """
+    Get low stock items with pagination.
+    
+    OPTIMIZED: Now includes pagination metadata.
+    """
+    try:
+        # Try optimized service first
+        try:
+            from optimized_inventory_service import OptimizedInventoryService
+            result = await OptimizedInventoryService.get_low_stock_items_optimized(
+                limit=limit, 
+                skip=skip
+            )
+            return {
+                "items": result["items"],
+                "pagination": {
+                    "current_page": (skip // limit) + 1,
+                    "items_per_page": limit,
+                    "total_items": result["total_count"],
+                    "showing": result["showing"]
+                }
+            }
+        except ImportError:
+            # Fallback to standard service
+            items = await InventoryService.get_low_stock_items()
+            
+            # Apply pagination manually for fallback
+            paginated_items = items[skip:skip+limit]
+            return {
+                "items": paginated_items,
+                "pagination": {
+                    "current_page": (skip // limit) + 1,
+                    "items_per_page": limit,
+                    "total_items": len(items),
+                    "showing": len(paginated_items)
+                }
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching low stock items: {str(e)}"
+        )
 
 # Get inventory item by ID
 @router.get("/{item_id}", response_model=InventoryResponse)
@@ -138,17 +225,6 @@ async def update_stock_level(
     
     return result
 
-# Get low stock items
-@router.get("/low-stock", response_model=List[InventoryResponse])
-async def get_low_stock_items(
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-) -> List[Dict[str, Any]]:
-    """
-    Get items with stock levels at or below their minimum stock level.
-    """
-    items = await InventoryService.get_low_stock_items()
-    return items
-
 # Transfer inventory
 @router.post("/transfer", response_model=Dict[str, Any])
 async def transfer_inventory(
@@ -190,3 +266,62 @@ async def check_inventory_anomalies(
     """
     anomalies = await InventoryService.check_inventory_anomalies()
     return anomalies
+
+# OPTIMIZED: New batch operations endpoint
+@router.post("/batch-update", response_model=Dict[str, Any])
+async def batch_update_inventory(
+    updates: List[Dict[str, Any]],
+    current_user: Dict[str, Any] = Depends(has_role(["Manager", "ReceivingClerk"]))
+) -> Dict[str, Any]:
+    """
+    Update multiple inventory items in a single batch operation.
+    
+    OPTIMIZED: Reduces N+1 query problems by processing multiple updates at once.
+    
+    Expected format for updates:
+    [
+        {"item_id": 1, "quantity_change": 10, "reason": "Stock replenishment"},
+        {"item_id": 2, "quantity_change": -5, "reason": "Damage adjustment"}
+    ]
+    """
+    try:
+        # Try optimized batch service first
+        try:
+            from optimized_inventory_service import OptimizedInventoryService
+            result = await OptimizedInventoryService.batch_update_stock_levels(updates)
+            return result
+        except ImportError:
+            # Fallback: Process individually (less efficient)
+            results = []
+            errors = []
+            
+            for update in updates:
+                try:
+                    item_id = update["item_id"]
+                    quantity_change = update["quantity_change"]
+                    reason = update["reason"]
+                    
+                    result = await InventoryService.update_stock_level(
+                        item_id, quantity_change, reason
+                    )
+                    
+                    if "error" in result:
+                        errors.append(f"Item {item_id}: {result['error']}")
+                    else:
+                        results.append(item_id)
+                        
+                except Exception as e:
+                    errors.append(f"Item {update.get('item_id', 'unknown')}: {str(e)}")
+            
+            return {
+                "success": len(errors) == 0,
+                "updated_count": len(results),
+                "items_updated": results,
+                "errors": errors
+            }
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in batch update: {str(e)}"
+        )

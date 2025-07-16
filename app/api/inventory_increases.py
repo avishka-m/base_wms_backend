@@ -466,11 +466,14 @@ async def predict_location_for_item(
     Get real-time location prediction for a specific item
     """
     try:
-        # if not allocation_service: # Original line commented out
-        #     raise HTTPException( # Original line commented out
-        #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE, # Original line commented out
-        #         detail="ML prediction service is not available" # Original line commented out
-        #     ) # Original line commented out
+        if allocation_service is None:
+            print(f"⚠️ ML prediction service is not available. Returning fallback for item {item_id}")
+            return {
+                "predicted_location": "B1.1",
+                "predicted_coordinates": {"x": 1, "y": 2, "floor": 1},
+                "prediction_confidence": 0.5,
+                "allocation_reason": "Fallback allocation - ML service not available"
+            }
             
         inventory_collection = get_collection("inventory")
         seasonal_collection = get_collection("seasonal_demand")
@@ -497,13 +500,13 @@ async def predict_location_for_item(
         # return allocation_result # Original line commented out
         
         # Fallback if ML service is not available
-        print(f"⚠️ ML prediction service is not available. Returning fallback for item {item_id}")
-        return {
-            "predicted_location": "B1.1",
-            "predicted_coordinates": {"x": 1, "y": 2, "floor": 1},
-            "prediction_confidence": 0.5,
-            "allocation_reason": "Fallback allocation - ML service not available"
-        }
+        # print(f"⚠️ ML prediction service is not available. Returning fallback for item {item_id}") # Original line commented out
+        # return { # Original line commented out
+        #     "predicted_location": "B1.1", # Original line commented out
+        #     "predicted_coordinates": {"x": 1, "y": 2, "floor": 1}, # Original line commented out
+        #     "prediction_confidence": 0.5, # Original line commented out
+        #     "allocation_reason": "Fallback allocation - ML service not available" # Original line commented out
+        # } # Original line commented out
         
     except Exception as e:
         print(f"❌ Error predicting location: {str(e)}")

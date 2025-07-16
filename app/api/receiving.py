@@ -528,6 +528,34 @@ async def predict_locations_for_receiving_items(
     Call this when receiver finishes updating/processing items
     """
     try:
+        # Fallback if ML service is not available
+        if not allocation_service:
+            print(f"⚠️ ML prediction service is not available. Returning fallback predictions.")
+            receiving_collection = get_collection("receiving")
+            receiving = receiving_collection.find_one({"receivingID": receiving_id})
+            if not receiving:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Receiving record {receiving_id} not found"
+                )
+            predictions = []
+            for idx, item in enumerate(receiving.get("items", [])):
+                if not item.get("processed", False):
+                    predictions.append({
+                        "itemID": item["itemID"],
+                        "item_name": item.get("name", "Unknown"),
+                        "predicted_location": "B1.1",
+                        "coordinates": {"x": 1, "y": 2, "floor": 1},
+                        "confidence": 0.5,
+                        "reason": "Fallback allocation - ML service not available"
+                    })
+            return {
+                "receiving_id": receiving_id,
+                "predictions": predictions,
+                "total_items_predicted": len(predictions),
+                "total_errors": 0
+            }
+            
         # Check if ML service is available
         if not allocation_service:
             raise HTTPException(

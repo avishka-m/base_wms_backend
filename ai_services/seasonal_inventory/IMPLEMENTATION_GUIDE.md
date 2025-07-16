@@ -323,6 +323,49 @@ API_ENDPOINTS = {
 }
 ```
 
+### Step 6.3: API Key Management for React + REST API
+
+To securely use API keys (e.g., for OpenAI, Kaggle, or internal services) in your React + REST API setup:
+
+1. **Backend (FastAPI) Configuration:**
+   - Store all sensitive API keys in environment variables or a `.env` file (never hardcode in code or expose to frontend).
+   - Example `.env`:
+     ```env
+     OPENAI_API_KEY=your_openai_key
+     KAGGLE_USERNAME=your_kaggle_username
+     KAGGLE_KEY=your_kaggle_key
+     MONGODB_URL=mongodb://localhost:27017
+     WMS_API_BASE_URL=http://localhost:8000/api/v1
+     ```
+   - Load these in FastAPI using `os.environ` or a library like `python-dotenv`.
+
+2. **Backend Usage:**
+   - Use the keys only in backend service calls (e.g., when calling OpenAI or Kaggle APIs from FastAPI endpoints).
+   - Never send API keys to the frontend or include them in API responses.
+
+3. **Frontend (React) Usage:**
+   - The React app should only call your backend REST API endpoints (e.g., `/api/forecast/...`).
+   - Never include or expose API keys in React code or in the browser.
+
+4. **Example FastAPI Key Loading:**
+   ```python
+   import os
+   from dotenv import load_dotenv
+
+   load_dotenv()
+   OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+   KAGGLE_USERNAME = os.getenv('KAGGLE_USERNAME')
+   KAGGLE_KEY = os.getenv('KAGGLE_KEY')
+   # Use these in your backend service logic only
+   ```
+
+5. **Security Note:**
+   - If you deploy, make sure your deployment environment (e.g., Docker, cloud) also sets these environment variables securely.
+
+---
+
+This ensures your API keys are never exposed to the frontend and are only used server-side for secure API calls.
+
 ### Step 7: Implementation Checklist
 
 #### Phase 1: Foundation (Week 1-2)

@@ -9,7 +9,7 @@ __version__ = "1.0.0"
 __author__ = "WMS AI Team"
 
 # Main imports
-from .data_collection import KaggleDataDownloader, WebDataScraper, WMSDataExtractor
+# from .data_collection import KaggleDataDownloader, WebDataScraper, WMSDataExtractor
 
 __all__ = [
     "KaggleDataDownloader",

@@ -1,115 +1,109 @@
 import os
 from typing import Dict, List, Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv 
+from ...config.base import (
+    MONGODB_URL, DATABASE_NAME, PROJECT_VERSION, ENVIRONMENT as BASE_ENVIRONMENT,
+    get_database_config
+)
 
 # Load environment variables
 load_dotenv()
 
-# =============================================================================
-# BASIC CONFIGURATION
-# =============================================================================
 
-# Project Information
+
+
 PROJECT_NAME = "Seasonal Inventory Prediction"
-PROJECT_VERSION = "1.0.0"
 PROJECT_DESCRIPTION = "AI-powered seasonal inventory forecasting using Facebook Prophet"
 
-# API Configuration
+
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8003"))
 API_PREFIX = "/api/v1"
 API_TITLE = "Seasonal Inventory API"
 
-# Database Configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
+
+# Database URLs inherited from base config
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 # WMS Integration
 WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 WMS_API_TIMEOUT = 30
 
-# =============================================================================
-# EXTERNAL API KEYS
-# =============================================================================
 
-# Kaggle API
-KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
-KAGGLE_KEY = os.getenv("KAGGLE_KEY")
+# # Kaggle API
+# KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
+# KAGGLE_KEY = os.getenv("KAGGLE_KEY")
 
-# OpenAI API (for additional AI features)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# # OpenAI API (for additional AI features)
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Weather API
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-WEATHER_API_URL = "http://api.openweathermap.org/data/2.5"
+# # Weather API
+# WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+# WEATHER_API_URL = "http://api.openweathermap.org/data/2.5"
 
-# Economic Data APIs
-FRED_API_KEY = os.getenv("FRED_API_KEY")  # Federal Reserve Economic Data
-ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # Stock market data
+# # Economic Data APIs
+# FRED_API_KEY = os.getenv("FRED_API_KEY")  # Federal Reserve Economic Data
+# ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # Stock market data
 
-# =============================================================================
-# DATA SOURCES CONFIGURATION
-# =============================================================================
+# # =============================================================================
+# # DATA SOURCES CONFIGURATION
+# # =============================================================================
 
-# Kaggle Datasets Configuration
-KAGGLE_DATASETS = {
-    "high_priority": [
-        {
-            "name": "carrie1/ecommerce-data",
-            "description": "E-commerce transaction data with seasonal patterns",
-            "target_file": "data.csv",
-            "date_column": "InvoiceDate",
-            "quantity_column": "Quantity",
-            "product_column": "StockCode"
-        },
-        {
-            "name": "mkechinov/ecommerce-behavior-data",
-            "description": "E-commerce behavior data",
-            "target_file": "2019-Oct.csv",
-            "date_column": "event_time",
-            "quantity_column": "price",
-            "product_column": "product_id"
-        },
-        {
-            "name": "olistbr/brazilian-ecommerce",
-            "description": "Brazilian e-commerce dataset",
-            "target_file": "olist_orders_dataset.csv",
-            "date_column": "order_purchase_timestamp",
-            "quantity_column": "order_item_id",
-            "product_column": "product_id"
-        }
-    ],
-    "medium_priority": [
-        {
-            "name": "shashwatwork/dataco-smart-supply-chain",
-            "description": "Supply chain dataset",
-            "target_file": "DataCoSupplyChainDataset.csv",
-            "date_column": "order date (DateOrders)",
-            "quantity_column": "Order Item Quantity",
-            "product_column": "Product Name"
-        },
-        {
-            "name": "prasad22/retail-transactions-dataset",
-            "description": "Retail transactions",
-            "target_file": "Retail_Data_Transactions.csv",
-            "date_column": "Transaction_Date",
-            "quantity_column": "Quantity",
-            "product_column": "Product_Category"
-        }
-    ]
-}
+# # Kaggle Datasets Configuration
+# KAGGLE_DATASETS = {
+#     "high_priority": [
+#         {
+#             "name": "carrie1/ecommerce-data",
+#             "description": "E-commerce transaction data with seasonal patterns",
+#             "target_file": "data.csv",
+#             "date_column": "InvoiceDate",
+#             "quantity_column": "Quantity",
+#             "product_column": "StockCode"
+#         },
+#         {
+#             "name": "mkechinov/ecommerce-behavior-data",
+#             "description": "E-commerce behavior data",
+#             "target_file": "2019-Oct.csv",
+#             "date_column": "event_time",
+#             "quantity_column": "price",
+#             "product_column": "product_id"
+#         },
+#         {
+#             "name": "olistbr/brazilian-ecommerce",
+#             "description": "Brazilian e-commerce dataset",
+#             "target_file": "olist_orders_dataset.csv",
+#             "date_column": "order_purchase_timestamp",
+#             "quantity_column": "order_item_id",
+#             "product_column": "product_id"
+#         }
+#     ],
+#     "medium_priority": [
+#         {
+#             "name": "shashwatwork/dataco-smart-supply-chain",
+#             "description": "Supply chain dataset",
+#             "target_file": "DataCoSupplyChainDataset.csv",
+#             "date_column": "order date (DateOrders)",
+#             "quantity_column": "Order Item Quantity",
+#             "product_column": "Product Name"
+#         },
+#         {
+#             "name": "prasad22/retail-transactions-dataset",
+#             "description": "Retail transactions",
+#             "target_file": "Retail_Data_Transactions.csv",
+#             "date_column": "Transaction_Date",
+#             "quantity_column": "Quantity",
+#             "product_column": "Product_Category"
+#         }
+#     ]
+# }
 
 # Data Paths
-DATA_DIR = "data"
+DATA_DIR = "base_wms_backend/ai_services/seasonal_inventory/data"
 DATASETS_DIR = f"{DATA_DIR}/datasets"
 PROCESSED_DIR = f"{DATA_DIR}/processed"
 MODELS_DIR = f"{DATA_DIR}/models"
 CACHE_DIR = f"{DATA_DIR}/cache"
 
-# =============================================================================
-# PROPHET MODEL CONFIGURATION
-# =============================================================================
 
 # Default Prophet Parameters
 PROPHET_CONFIG = {
@@ -148,11 +142,9 @@ PROPHET_CONFIG = {
         "countries": ["US", "BR", "GB", "IN"],
         "custom_events": [
             {"holiday": "Black Friday", "date": "2024-11-29"},
-            {"holiday": "Cyber Monday", "date": "2024-12-02"},
-            {"holiday": "Back to School", "date": "2024-08-15"},
+           
             {"holiday": "Valentine's Day", "date": "2024-02-14"},
-            {"holiday": "Mother's Day", "date": "2024-05-12"},
-            {"holiday": "Father's Day", "date": "2024-06-16"}
+           
         ]
     }
 }
@@ -173,15 +165,12 @@ TRAINING_CONFIG = {
     
     "validation": {
         "train_ratio": 0.8,
-        "validation_ratio": 0.1,
+        #"validation_ratio": 0.1,
         "test_ratio": 0.1,
         "min_train_days": 365
     }
 }
 
-# =============================================================================
-# FEATURE ENGINEERING CONFIGURATION
-# =============================================================================
 
 # Feature Engineering Settings
 FEATURE_CONFIG = {
@@ -217,9 +206,7 @@ DATA_QUALITY = {
     "max_forecast_horizon": 365
 }
 
-# =============================================================================
-# VISUALIZATION CONFIGURATION
-# =============================================================================
+
 
 # Dashboard Configuration
 DASHBOARD_CONFIG = {
@@ -249,9 +236,7 @@ PLOT_CONFIG = {
     "save_format": "png"
 }
 
-# =============================================================================
-# CACHING AND PERFORMANCE
-# =============================================================================
+
 
 # Caching Configuration
 CACHE_CONFIG = {
@@ -271,9 +256,7 @@ PERFORMANCE_CONFIG = {
     "use_gpu": False  # Set to True if CUDA available
 }
 
-# =============================================================================
-# LOGGING AND MONITORING
-# =============================================================================
+
 
 # Logging Configuration
 LOGGING_CONFIG = {
@@ -297,9 +280,7 @@ MONITORING_CONFIG = {
     }
 }
 
-# =============================================================================
-# BUSINESS RULES AND THRESHOLDS
-# =============================================================================
+
 
 # Business Configuration
 BUSINESS_CONFIG = {
@@ -337,12 +318,9 @@ ALERT_CONFIG = {
     }
 }
 
-# =============================================================================
-# ENVIRONMENT-SPECIFIC CONFIGURATIONS
-# =============================================================================
 
-# Environment Settings
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+ENVIRONMENT = BASE_ENVIRONMENT  # Inherit from base config
 
 if ENVIRONMENT == "production":
     # Production overrides
@@ -357,28 +335,32 @@ elif ENVIRONMENT == "development":
     CACHE_CONFIG["forecast_cache_ttl"] = 600  # 10 minutes
 
 elif ENVIRONMENT == "testing":
-    # Testing overrides
+    # Testing overrides - use different database name
     DATABASE_NAME = "warehouse_management_test"
     CACHE_CONFIG["forecast_cache_ttl"] = 60  # 1 minute
     PERFORMANCE_CONFIG["max_workers"] = 1
 
 # =============================================================================
-# HELPER FUNCTIONS
+# AI-SPECIFIC MODEL CONFIGURATION
 # =============================================================================
+# Model Caching Strategy
+MODEL_CACHE_STRATEGY = os.getenv("MODEL_CACHE_STRATEGY", "data_hash")  # Options: "never", "time_based", "data_hash", "always"
+MODEL_CACHE_HOURS = int(os.getenv("MODEL_CACHE_HOURS", "24"))  # Only used if strategy is "time_based"
 
+# Model Retraining Configuration
+AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").lower() == "true"
+RETRAIN_SCHEDULE_CRON = os.getenv("RETRAIN_SCHEDULE_CRON", "0 2 * * *")  # Daily at 2 AM
+
+# =============================================================================
+# AI-SPECIFIC UTILITY FUNCTIONS
+# =============================================================================
 def get_kaggle_config() -> Dict[str, Any]:
     """Get Kaggle API configuration."""
+    kaggle_username = os.getenv("KAGGLE_USERNAME")
+    kaggle_key = os.getenv("KAGGLE_KEY")
     return {
-        "username": KAGGLE_USERNAME,
-        "key": KAGGLE_KEY
-    }
-
-def get_database_config() -> Dict[str, str]:
-    """Get database configuration."""
-    return {
-        "mongodb_url": MONGODB_URL,
-        "database_name": DATABASE_NAME,
-        "redis_url": REDIS_URL
+        "username": kaggle_username,
+        "key": kaggle_key
     }
 
 def get_prophet_config() -> Dict[str, Any]:
@@ -394,19 +376,11 @@ def get_api_config() -> Dict[str, Any]:
         "title": API_TITLE
     }
 
-def validate_config() -> bool:
-    """Validate configuration settings."""
-    required_vars = [
-        "MONGODB_URL",
-        "DATABASE_NAME"
-    ]
-    
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        raise ValueError(f"Missing required environment variables: {missing_vars}")
-    
+def validate_ai_config() -> bool:
+    """Validate AI-specific configuration settings."""
+    # Base validation is handled by base config
+    # Add AI-specific validations here if needed
     return True
 
 # Validate configuration on import
-validate_config()
+validate_ai_config()

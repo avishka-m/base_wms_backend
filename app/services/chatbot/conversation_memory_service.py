@@ -326,6 +326,31 @@ class ConversationMemoryService:
         except Exception as e:
             logger.error(f"Error clearing conversation memory: {e}")
     
+    async def clear_user_sessions(self, user_id: str):
+        """
+        Clear all conversation memories for a specific user (for logout).
+        
+        Args:
+            user_id: User identifier
+        """
+        try:
+            # Clear from memory cache - find all keys that start with this user_id
+            keys_to_remove = [key for key in self.conversation_memories.keys() 
+                             if key.startswith(f"{user_id}:")]
+            
+            for key in keys_to_remove:
+                self.conversation_memories[key].clear()
+                del self.conversation_memories[key]
+            
+            # Clear from database
+            messages_col = await get_async_collection("chat_conversation_memory")
+            await messages_col.delete_many({"user_id": user_id})
+            
+            logger.info(f"Cleared all conversation memories for user {user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error clearing user sessions: {e}")
+    
     async def get_memory_stats(self) -> Dict[str, Any]:
         """
         Get statistics about conversation memory usage.
@@ -383,4 +408,4 @@ class ConversationMemoryService:
 
 
 # Create a singleton instance
-conversation_memory_service = ConversationMemoryService() 
+conversation_memory_service = ConversationMemoryService()

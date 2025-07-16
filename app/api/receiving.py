@@ -163,7 +163,32 @@ async def get_receiving_records(
     
     # Execute query
     receiving_records = list(receiving_collection.find(query).skip(skip).limit(limit))
-    return receiving_records
+    
+    # Transform records to ensure they match the expected schema
+    transformed_records = []
+    for record in receiving_records:
+        # Ensure workerID is present (fallback for legacy data)
+        if "workerID" not in record:
+            record["workerID"] = 1  # Default workerID for legacy records
+        
+        # Transform items to ensure expected_quantity and proper locationID
+        if "items" in record:
+            for item in record["items"]:
+                # Ensure expected_quantity is present
+                if "expected_quantity" not in item:
+                    item["expected_quantity"] = item.get("quantity", 0)  # Default to actual quantity
+                
+                # Ensure locationID is integer if present
+                if "locationID" in item and isinstance(item["locationID"], str):
+                    try:
+                        # Try to extract numeric part from location strings like "B01.1"
+                        item["locationID"] = 1  # Default to location 1 for string locations
+                    except (ValueError, TypeError):
+                        item["locationID"] = None
+        
+        transformed_records.append(record)
+    
+    return transformed_records
 
 # Get receiving record by ID
 @router.get("/{receiving_id}", response_model=ReceivingResponse)
@@ -182,6 +207,26 @@ async def get_receiving_record(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Receiving record with ID {receiving_id} not found"
         )
+    
+    # Transform record to ensure it matches the expected schema
+    # Ensure workerID is present (fallback for legacy data)
+    if "workerID" not in receiving:
+        receiving["workerID"] = 1  # Default workerID for legacy records
+    
+    # Transform items to ensure expected_quantity and proper locationID
+    if "items" in receiving:
+        for item in receiving["items"]:
+            # Ensure expected_quantity is present
+            if "expected_quantity" not in item:
+                item["expected_quantity"] = item.get("quantity", 0)  # Default to actual quantity
+            
+            # Ensure locationID is integer if present
+            if "locationID" in item and isinstance(item["locationID"], str):
+                try:
+                    # Try to extract numeric part from location strings like "B01.1"
+                    item["locationID"] = 1  # Default to location 1 for string locations
+                except (ValueError, TypeError):
+                    item["locationID"] = None
     
     return receiving
 

@@ -1,11 +1,17 @@
 """
-chat routes for the WMS Chatbot API with persistent storage.
+Enhanced chat routes for the WMS Chatbot API with persistent storage.
 Supports advanced features including search, analytics, file uploads, and data export.
 """
 
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
+from collections import Counter
 from fastapi import APIRouter, HTTPException, status, Depends, Query, BackgroundTasks
+from pymongo import DESCENDING
+
+from app.utils.chatbot.database import db
+
 import logging
 
 from app.models.chatbot.chat_models import (
@@ -986,7 +992,9 @@ async def get_search_analytics(
         user_id = current_user.get("username", "anonymous")
         
         # Get search analytics from database
-        search_analytics_col = await get_async_collection("chat_search_analytics")
+
+        search_analytics_col = db["chat_search_analytics"]
+
         
         # Date range
         end_date = datetime.utcnow()
@@ -1970,3 +1978,34 @@ async def get_current_user_quick_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get quick history"
         )
+
+
+
+@router.post("/logout", response_model=Dict[str, Any])
+async def logout_user(current_user: Dict[str, Any] = Depends(get_optional_current_user)):
+    """
+    Clear all user session data and conversation memories on logout.
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        Logout confirmation
+    """
+    try:
+        user_id = current_user.get("username", "anonymous")
+        
+        # Clear all conversation memories for this user
+        await conversation_service.memory_service.clear_user_sessions(user_id)
+        
+        return {
+            "success": True,
+            "message": "User session cleared successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear user session: {str(e)}"
+        )
+

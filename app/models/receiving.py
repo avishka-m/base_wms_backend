@@ -34,6 +34,19 @@ class ReceivingUpdate(BaseModel):
 class ReceivingItemInDB(BaseDBModel, ReceivingItemBase):
     processed: bool = Field(False, description="Whether the item has been processed")
     locationID: Optional[int] = Field(None, description="ID of the assigned storage location")
+    
+    # Additional fields that might be present in the database
+    predicted_location: Optional[str] = Field(None, description="Predicted location string")
+    actual_location: Optional[str] = Field(None, description="Actual location string") 
+    predicted_coordinates: Optional[Dict[str, Any]] = Field(None, description="Predicted coordinates")
+    prediction_confidence: Optional[float] = Field(None, description="Prediction confidence")
+    allocation_reason: Optional[str] = Field(None, description="Allocation reason")
+    predicted_at: Optional[str] = Field(None, description="Prediction timestamp")
+    predicted_by: Optional[str] = Field(None, description="Who made the prediction")
+    processed_by: Optional[str] = Field(None, description="Who processed the item")
+    processed_date: Optional[str] = Field(None, description="When the item was processed")
+    quantity_processed: Optional[int] = Field(None, description="Quantity that was processed")
+    created_by: Optional[str] = Field(None, description="Who created the record")
 
     class Config:
         populate_by_name = True
@@ -43,6 +56,9 @@ class ReceivingInDB(BaseDBModel, ReceivingBase):
     receivingID: int = Field(..., description="Unique receiving ID")
     items: List[ReceivingItemInDB] = Field(..., description="List of items received")
     notes: Optional[str] = Field(None, description="General notes about the receiving")
+    
+    # Additional fields that might be present in the database
+    received_by: Optional[str] = Field(None, description="Who received the items")
     
     @property
     def is_complete(self) -> bool:
@@ -90,6 +106,9 @@ class ReceivingResponse(BaseDBModel, ReceivingBase):
     receivingID: int = Field(..., description="Unique receiving ID")
     items: List[ReceivingItemInDB] = Field(..., description="List of items received")
     notes: Optional[str] = Field(None, description="General notes about the receiving")
+    
+    # Additional fields that might be present in the database
+    received_by: Optional[str] = Field(None, description="Who received the items")
 
     class Config:
         populate_by_name = True

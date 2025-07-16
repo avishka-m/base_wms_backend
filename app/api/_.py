@@ -235,3 +235,32 @@ async def get_user_role(current_user: Dict[str, Any] = Depends(get_optional_curr
         "role": current_user.get("role"),
         "allowed_chatbot_roles": get_allowed_chatbot_roles(current_user.get("role", ""))
     }
+
+
+@router.post("/logout", response_model=Dict[str, Any])
+async def logout_user(current_user: Dict[str, Any] = Depends(get_optional_current_user)):
+    """
+    Clear all user session data and conversation memories on logout.
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        Logout confirmation
+    """
+    try:
+        user_id = current_user.get("username", "anonymous")
+        
+        # Clear all conversation memories for this user
+        await conversation_service.memory_service.clear_user_sessions(user_id)
+        
+        return {
+            "success": True,
+            "message": "User session cleared successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear user session: {str(e)}"
+        )

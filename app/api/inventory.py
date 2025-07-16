@@ -27,39 +27,31 @@ async def get_inventory_items(
     - Proper error handling
     """
     try:
-        # Check if we have optimized inventory service available
-        try:
-            from optimized_inventory_service import OptimizedInventoryService
-            # Use optimized service with full pagination metadata
-            result = await OptimizedInventoryService.get_inventory_items_paginated(
-                skip=skip,
-                limit=limit,
-                category=category,
-                low_stock=low_stock,
-                search=search
-            )
-            return result
-        except ImportError:
-            # Fallback to standard service
-            items = await InventoryService.get_inventory_items(
-                skip=skip,
-                limit=limit,
-                category=category,
-                low_stock=low_stock
-            )
-            
-            # Add basic pagination metadata
-            total_items = len(items) if len(items) < limit else skip + len(items) + 1  # Approximate
-            return {
-                "items": items,
-                "pagination": {
-                    "current_page": (skip // limit) + 1,
-                    "items_per_page": limit,
-                    "total_items": total_items,
-                    "has_next": len(items) == limit,
-                    "has_prev": skip > 0
-                }
+        # Use standard inventory service
+        items = await InventoryService.get_inventory_items(
+            skip=skip,
+            limit=limit,
+            category=category,
+            low_stock=low_stock
+        )
+        
+        # Convert ObjectId to string for JSON serialization
+        for item in items:
+            if '_id' in item:
+                item['_id'] = str(item['_id'])
+        
+        # Add basic pagination metadata
+        total_items = len(items) if len(items) < limit else skip + len(items) + 1  # Approximate
+        return {
+            "items": items,
+            "pagination": {
+                "current_page": (skip // limit) + 1,
+                "items_per_page": limit,
+                "total_items": total_items,
+                "has_next": len(items) == limit,
+                "has_prev": skip > 0
             }
+        }
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

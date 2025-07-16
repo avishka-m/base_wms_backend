@@ -87,33 +87,53 @@ tmp/
 generated/
 
 # Data files - exclude large datasets
-# *.csv
+*.csv
 *.json
 *.parquet
 *.xlsx
 *.xls
 
-# AI Services data directories
-#ai-services/*/data/
-#ai-services/*/datasets/
-#ai-services/*/models/
-ai-services/*/cache/
-ai-services/chatbot/data/
-ai-services/chatbot/chroma_db/
+# AI Services data directories - comprehensive patterns
+ai_services/*/data/
+ai_services/*/datasets/
+ai_services/*/models/
+ai_services/*/cache/
+ai_services/chatbot/data/
+ai_services/chatbot/chroma_db/
+ai_services/seasonal_inventory/data/
+ai_services/forecasting/data/
+**/models_backup*/
+**/data/models/
+**/models/
 
 # Large dataset files specifically
-# **/data/processed/
+**/data/processed/
 **/data/datasets/
 **/data/raw/
 **/brazilian-ecommerce/
 **/retail-transactions/
+**/training/model_train/
 
 # Model files
-#*.pkl
+*.pkl
 *.joblib
 *.h5
 *.pb
 *.bin
 
-test_*.py
+# Large image files from training
+*.png
+*.jpg
+*.jpeg
 
+# Training directory and all subdirectories
+training/
+**/training/
+ai_services/**/training/
+
+# Individual model directories
+**/individual_models/
+**/production_models/
+**/trained_models/
+
+test_*.py

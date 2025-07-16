@@ -1,3 +1,5 @@
+
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
@@ -229,4 +231,109 @@ class AnalyticsService:
                 sum(w["occupied_locations"] for w in warehouse_stats) / 
                 sum(w["total_locations"] for w in warehouse_stats) * 100, 1
             ) if sum(w["total_locations"] for w in warehouse_stats) > 0 else 0
+        }
+    # judith
+    # Modified to include receiving clerk metrics to display on dashboard
+    @staticmethod
+    async def get_receiving_clerk_metrics(days: int = 30) -> Dict[str, Any]:
+        """
+        Get key metrics for receiving clerk dashboard.
+        
+        Args:
+            days: Number of days to look back for trends
+        """
+        receiving_collection = get_collection("receiving")
+        returns_collection = get_collection("returns")
+        inventory_collection = get_collection("inventory")
+        
+        # Calculate date range
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        date_query = {"created_at": {"$gte": start_date, "$lte": end_date}}
+        
+        # Get items received count
+        items_received = 0
+        try:
+            for receiving in receiving_collection.find(date_query):
+                if receiving.get("status") == "completed":
+                    items = receiving.get("items", [])
+                    for item in items:
+                        items_received += item.get("quantity", 0)
+        except Exception as e:
+            print(f"Error querying receiving collection: {e}")
+            # Continue with 0 if collection doesn't exist
+        
+        # Get items returned count
+        items_returned = 0
+        try:
+            for return_order in returns_collection.find(date_query):
+                if return_order.get("status") in ["pending", "approved", "completed"]:
+                    items = return_order.get("items", [])
+                    for item in items:
+                        items_returned += item.get("quantity", 0)
+        except Exception as e:
+            print(f"Error querying returns collection: {e}")
+            # Continue with 0 if collection doesn't exist
+        
+        # Get low stock items with details
+        low_stock_items = []
+        low_stock_count = 0
+        try:
+            low_stock_query = {"$expr": {"$lte": ["$stock_level", "$min_stock_level"]}}
+            low_stock_items = list(inventory_collection.find(
+                low_stock_query,
+                {
+                    "inventoryID": 1,
+                    "item_name": 1,
+                    "stock_level": 1,
+                    "min_stock_level": 1,
+                    "category": 1
+                }
+            ).limit(10))  # Get top 10 low stock items
+            
+            low_stock_count = inventory_collection.count_documents(low_stock_query)
+        except Exception as e:
+            print(f"Error querying inventory collection: {e}")
+            # Continue with empty list if collection doesn't exist
+        
+        # Get today's metrics specifically
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_query = {"created_at": {"$gte": today_start}}
+        
+        today_received = 0
+        try:
+            for receiving in receiving_collection.find(today_query):
+                if receiving.get("status") == "completed":
+                    items = receiving.get("items", [])
+                    for item in items:
+                        today_received += item.get("quantity", 0)
+        except Exception as e:
+            print(f"Error querying today's receiving: {e}")
+        
+        today_returned = 0
+        try:
+            for return_order in returns_collection.find(today_query):
+                if return_order.get("status") in ["pending", "approved", "completed"]:
+                    items = return_order.get("items", [])
+                    for item in items:
+                        today_returned += item.get("quantity", 0)
+        except Exception as e:
+            print(f"Error querying today's returns: {e}")
+        
+        return {
+            "items_received": {
+                "total": items_received,
+                "today": today_received,
+                "period_days": days
+            },
+            "items_returned": {
+                "total": items_returned,
+                "today": today_returned,
+                "period_days": days
+            },
+            "low_stock_items": {
+                "count": low_stock_count,
+                "items": low_stock_items,
+                "critical_threshold": 10  # Items with stock level <= 10
+            }
         }

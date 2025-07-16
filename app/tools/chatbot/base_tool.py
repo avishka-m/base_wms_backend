@@ -48,8 +48,51 @@ class WMSBaseTool(BaseTool):
         return self._run(**kwargs)
 
 
+class CustomTool(WMSBaseTool):
+    """Custom tool implementation for dynamic function wrapping."""
+    
+    def __init__(self, name: str, description: str, args_schema: Optional[Type[BaseModel]] = None, 
+                 function: Optional[Callable] = None):
+        super().__init__(name=name, description=description, args_schema=args_schema)
+        self._function = function
+        self._is_async = function and inspect.iscoroutinefunction(function)
+    
+    def _run(self, **kwargs):
+        if not self._function:
+            raise ValueError("No function provided to CustomTool")
+            
+        if self._is_async:
+            # If the function is async but we're in sync context, run in event loop
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If event loop is already running, we need to create a new task
+                    # This is a fallback for when called from sync context in an async environment
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, self._function(**kwargs))
+                        return future.result()
+                else:
+                    return loop.run_until_complete(self._function(**kwargs))
+            except RuntimeError:
+                # No event loop, create one
+                return asyncio.run(self._function(**kwargs))
+        else:
+            return self._function(**kwargs)
+    
+    async def _arun(self, **kwargs):
+        if not self._function:
+            raise ValueError("No function provided to CustomTool")
+            
+        if self._is_async:
+            return await self._function(**kwargs)
+        else:
+            # Run sync function in thread pool to avoid blocking
+            return await asyncio.get_event_loop().run_in_executor(None, lambda: self._function(**kwargs))
+
+
 def create_tool(name: str, description: str, function: Callable, 
-               arg_descriptions: Dict[str, Dict[str, Any]]) -> WMSBaseTool:
+               arg_descriptions: Dict[str, Dict[str, Any]]) -> CustomTool:
     """
     Factory function to create a WMS tool.
     
@@ -60,7 +103,7 @@ def create_tool(name: str, description: str, function: Callable,
         arg_descriptions: Dictionary mapping argument names to field descriptions
         
     Returns:
-        A WMSBaseTool instance
+        A CustomTool instance
     """
     # Create dynamic Pydantic model for arguments
     fields = {}
@@ -72,37 +115,5 @@ def create_tool(name: str, description: str, function: Callable,
     
     args_schema = create_model(f"{name.capitalize()}Schema", **fields)
     
-    # Check if the function is async
-    is_async = inspect.iscoroutinefunction(function)
-    
-    # Create tool class
-    class CustomTool(WMSBaseTool):
-        def _run(self, **kwargs):
-            if is_async:
-                # If the function is async but we're in sync context, run in event loop
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # If event loop is already running, we need to create a new task
-                        # This is a fallback for when called from sync context in an async environment
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(asyncio.run, function(**kwargs))
-                            return future.result()
-                    else:
-                        return loop.run_until_complete(function(**kwargs))
-                except RuntimeError:
-                    # No event loop, create one
-                    return asyncio.run(function(**kwargs))
-            else:
-                return function(**kwargs)
-        
-        async def _arun(self, **kwargs):
-            if is_async:
-                return await function(**kwargs)
-            else:
-                # Run sync function in thread pool to avoid blocking
-                return await asyncio.get_event_loop().run_in_executor(None, lambda: function(**kwargs))
-    
     # Instantiate and return tool
-    return CustomTool(name=name, description=description, args_schema=args_schema)
+    return CustomTool(name=name, description=description, args_schema=args_schema, function=function)

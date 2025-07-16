@@ -21,7 +21,15 @@ from .chatbot import router as chatbot_router  # Enhanced chatbot with persisten
 
 # from .role_based_enhanced_chatbot_routes import router as role_based_chatbot_router  # Role-based enhanced chatbot features
 from .websocket_routes import router as websocket_router
+
+from .storage_history import router as storage_history_router
+from .seed_data import router as seed_data_router
+from .inventory_increases import router as inventory_increases_router
+from .location_inventory import router as location_inventory_router
+from .ai_routes import router as ai_router
+
 from .websocket_admin import router as websocket_admin_router
+
 
 
 # Create main API router
@@ -44,9 +52,17 @@ api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytic
 api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])
 api_router.include_router(role_based_router, prefix="/role-based", tags=["Role-Based Operations"])
 api_router.include_router(workflow_router, prefix="/workflow", tags=["Workflow Management"])
+
+api_router.include_router(storage_history_router, prefix="/storage-history", tags=["Storage History"])
+api_router.include_router(seed_data_router, prefix="/seed-data", tags=["Seed Data"])
+api_router.include_router(inventory_increases_router, prefix="/inventory-increases", tags=["Inventory Increases"])
+api_router.include_router(location_inventory_router, prefix="/location-inventory", tags=["Location Inventory"])
+api_router.include_router(ai_router, prefix="/ai", tags=["AI/ML Predictions"])
+
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot"])  # Enhanced chatbot with persistent storage
 
 api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates
 api_router.include_router(websocket_admin_router, prefix="/admin", tags=["WebSocket Admin"])  # WebSocket administration
 api_router.include_router(anomaly_detection_router, prefix="/anomaly-detection", tags=["Anomaly Detection"])  # Beginner-friendly anomaly detection
+
 

@@ -104,6 +104,8 @@ ai-services/chatbot/chroma_db/
 **/brazilian-ecommerce/
 **/retail-transactions/
 
+setupRK.txt
+
 # Model files
 *.pkl
 *.joblib

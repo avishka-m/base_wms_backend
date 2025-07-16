@@ -32,7 +32,7 @@ class WarehouseInDB(BaseDBModel, WarehouseBase):
                 "location": "123 Storage Ave, Warehouse City",
                 "capacity": 10000,
                 "warehouseID": 1,
-                "available_storage": 8000
+                "available_storage": 8002
             }
         }
 
@@ -50,7 +50,7 @@ class WarehouseResponse(BaseDBModel, WarehouseBase):
                 "location": "123 Storage Ave, Warehouse City",
                 "capacity": 10000,
                 "warehouseID": 1,
-                "available_storage": 8000,
+                "available_storage": 8002,
                 "created_at": "2023-01-01T00:00:00",
                 "updated_at": "2023-01-01T00:00:00"
             }

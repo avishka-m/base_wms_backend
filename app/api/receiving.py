@@ -519,7 +519,8 @@ async def predict_locations_for_receiving_items(
                             item_size=inventory_item.get("size", "M"),
                             quantity=item["quantity"],
                             db_collection_seasonal=seasonal_collection,
-                            db_collection_storage=storage_collection
+                            db_collection_storage=storage_collection,
+                            db_collection_location_inventory=get_collection("location_inventory")  
                         )
                         
                         if allocation_result['success']:

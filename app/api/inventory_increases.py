@@ -84,14 +84,11 @@ async def create_inventory_increase(
 ) -> Dict[str, Any]:
     """
     Create a new inventory increase record.
-    This endpoint is called when receiver updates inventory through the frontend.
-    Now includes ML location predictions!
+    ✨ UPDATED: No ML prediction at creation - predictions happen when picker clicks "Store"
     """
     try:
         receiving_collection = get_collection("receiving")
         inventory_collection = get_collection("inventory")
-        seasonal_collection = get_collection("seasonal_demand")
-        storage_collection = get_collection("storage_history")
         
         # ✨ DEBUG: Log received data
         print(f"🔍 DEBUG - Received request_data: {request_data}")
@@ -106,10 +103,19 @@ async def create_inventory_increase(
         
         print(f"🔍 DEBUG - Extracted: itemID={item_id}, quantity={quantity}, item_name={item_name}")
         
-        if not item_id or not quantity:
+        if quantity == "None" or quantity is None or quantity == "":
+            quantity = None
+            
+        # Convert quantity to int if it's a string number
+        if isinstance(quantity, str) and quantity.isdigit():
+            quantity = int(quantity)
+            
+        print(f"🔍 DEBUG - Final: itemID={item_id}, quantity={quantity} (type: {type(quantity)}), item_name={item_name}")
+        
+        if not item_id or quantity is None or quantity <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"itemID and quantity are required. Received: itemID={item_id}, quantity={quantity}"
+                detail=f"itemID and valid quantity are required. Received: itemID={item_id}, quantity={quantity}"
             )
         
         # Get item details from inventory
@@ -126,46 +132,6 @@ async def create_inventory_increase(
         if receiving_records:
             next_receiving_id = receiving_records[0].get("receivingID", 0) + 1
         
-        # ✨ ML PREDICTION: Get optimal location for the item
-        predicted_location = None
-        predicted_coordinates = None
-        prediction_confidence = None
-        allocation_reason = "Manual inventory update"
-        
-        if allocation_service:
-            try:
-                allocation_result = await allocation_service.allocate_location_for_item(
-                    item_id=item_id,
-                    category=inventory_item.get("category", "General"),
-                    item_size=inventory_item.get("size", "M"),
-                    quantity=quantity,
-                    db_collection_seasonal=seasonal_collection,
-                    db_collection_storage=storage_collection
-                )
-                
-                if allocation_result['success']:
-                    predicted_location = allocation_result['allocated_location']
-                    predicted_coordinates = allocation_result['coordinates']
-                    prediction_confidence = allocation_result['confidence']
-                    allocation_reason = allocation_result['allocation_reason']
-                    
-                    print(f"✅ ML prediction for item {item_id}: {predicted_location} (confidence: {prediction_confidence})")
-                    
-            except Exception as e:
-                print(f"⚠️ ML prediction failed for item {item_id}: {str(e)}")
-                # Use fallback values
-                predicted_location = "B1.1"
-                predicted_coordinates = {'x': 1, 'y': 2, 'floor': 1}
-                prediction_confidence = 0.5
-                allocation_reason = "Fallback location - ML prediction failed"
-        else:
-            # Use fallback when ML service is not available
-            predicted_location = "B1.1"
-            predicted_coordinates = {'x': 1, 'y': 2, 'floor': 1}
-            prediction_confidence = 0.5
-            allocation_reason = "Fallback location - ML service unavailable"
-        
-        # Create receiving record with ML prediction
         receiving_data = {
             "receivingID": next_receiving_id,
             "status": "processing",  # Set to processing so it appears in picker dashboard
@@ -183,13 +149,11 @@ async def create_inventory_increase(
                     "notes": notes,
                     "created_by": current_user.get("username", "system"),
                     "created_at": datetime.utcnow().isoformat(),
-                    # ✨ Store ML prediction data
-                    "predicted_location": predicted_location,
-                    "predicted_coordinates": predicted_coordinates,
-                    "prediction_confidence": prediction_confidence,
-                    "allocation_reason": allocation_reason,
-                    "predicted_at": datetime.utcnow().isoformat(),
-                    "predicted_by": current_user.get("username", "system")
+                   
+                    "item_name": item_name or inventory_item.get("item_name", f"Item {item_id}"),
+                    "category": inventory_item.get("category", "General"),
+                    "size": inventory_item.get("size", "M"),
+                    "awaiting_location_prediction": True  # Flag to show this needs prediction when storing
                 }
             ]
         }
@@ -197,16 +161,16 @@ async def create_inventory_increase(
         # Insert the receiving record
         result = receiving_collection.insert_one(receiving_data)
         
+        print(f"✅ Inventory increase created without ML prediction - will predict when storing")
+        
         return {
-            "message": "Inventory increase recorded successfully with ML prediction",
+            "message": "Inventory increase recorded successfully - location will be predicted when storing",
             "receiving_id": next_receiving_id,
             "item_id": item_id,
             "item_name": item_name,
             "quantity": quantity,
-            "predicted_location": predicted_location,
-            "prediction_confidence": prediction_confidence,
-            "allocation_reason": allocation_reason,
-            "status": "Item is now available for storing in picker dashboard"
+            "status": "Item is now available for storing in picker dashboard",
+            "note": "ML prediction will happen when picker clicks 'Store' button"
         }
         
     except Exception as e:
@@ -215,7 +179,7 @@ async def create_inventory_increase(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create inventory increase: {str(e)}"
         )
-
+    
 @router.get("/")
 async def get_inventory_increases(
     current_user: Dict[str, Any] = Depends(get_current_active_user),
@@ -331,16 +295,17 @@ async def mark_inventory_increases_as_stored(
 ) -> Dict[str, Any]:
     """
     Mark inventory increases as stored.
-    Updates with the actual allocated location and records in storage_history!
+    Now uses location_inventory to track slot availability!
     """
     try:
         receiving_collection = get_collection("receiving")
-        storage_collection = get_collection("storage_history")  # ✨ ADD: Get storage collection
+        storage_collection = get_collection("storage_history")
+        location_collection = get_collection("location_inventory")  # ✨ NEW: Location inventory
         
         item_id = request_data.get("itemID")
         item_name = request_data.get("item_name")
         quantity_stored = request_data.get("quantity_stored")
-        actual_location = request_data.get("actual_location")  # Actual location used
+        actual_location = request_data.get("actual_location")  # e.g., "B02.1"
         
         if not item_id:
             raise HTTPException(
@@ -352,6 +317,23 @@ async def mark_inventory_increases_as_stored(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="actual_location is required"
+            )
+        
+        # ✨ NEW: Check if location is available in location_inventory
+        location_record = location_collection.find_one({"locationID": actual_location})
+        if not location_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Location {actual_location} not found in inventory system"
+            )
+        
+        if not location_record.get("available", False):
+            # Get details of what's currently stored there
+            current_item = location_record.get("itemName", "Unknown item")
+            current_quantity = location_record.get("quantity", 0)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Location {actual_location} is already occupied by {current_item} (quantity: {current_quantity})"
             )
         
         # Find receiving records with this item that's not processed
@@ -376,11 +358,11 @@ async def mark_inventory_increases_as_stored(
                 # Store both predicted and actual location data
                 update_data = {
                     f"items.{idx}.processed": True,
-                    f"items.{idx}.locationID": actual_location,  # Store actual location
+                    f"items.{idx}.locationID": actual_location,
                     f"items.{idx}.quantity_processed": quantity_stored,
                     f"items.{idx}.processed_by": current_user.get("username", "Unknown"),
                     f"items.{idx}.processed_date": datetime.utcnow().isoformat(),
-                    f"items.{idx}.actual_location": actual_location,  # Store where it was actually placed
+                    f"items.{idx}.actual_location": actual_location,
                 }
                 
                 receiving_collection.update_one(
@@ -397,7 +379,30 @@ async def mark_inventory_increases_as_stored(
                 detail=f"Item {item_id} not found in receiving record"
             )
         
-        # ✨ NEW: Record in storage_history for ML model to track occupied locations
+        # ✨ NEW: Update location_inventory to mark as occupied
+        location_update_data = {
+            "available": False,
+            "itemID": item_id,
+            "itemName": item_name or f"Item {item_id}",
+            "quantity": quantity_stored or stored_item.get("quantity", 1),
+            "storedAt": datetime.utcnow().isoformat(),
+            "storedBy": current_user.get("username", "Unknown"),
+            "receivingID": record["receivingID"],
+            "lastUpdated": datetime.utcnow().isoformat()
+        }
+        
+        location_result = location_collection.update_one(
+            {"locationID": actual_location},
+            {"$set": location_update_data}
+        )
+        
+        if location_result.matched_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update location inventory for {actual_location}"
+            )
+        
+        # ✨ KEEP: Record in storage_history for audit trail
         storage_entry = {
             "locationID": actual_location,
             "action": "stored",
@@ -417,13 +422,13 @@ async def mark_inventory_increases_as_stored(
             }
         }
         
-        # ✨ ADD: Insert storage history record
         storage_result = storage_collection.insert_one(storage_entry)
         
-        print(f"✅ Item {item_id} marked as stored in location {actual_location}")
-        print(f"✅ Storage history record created: {storage_result.inserted_id}")
+        print(f"✅ Item {item_id} stored in location {actual_location}")
+        print(f"✅ Location inventory updated: {location_result.modified_count} records")
+        print(f"✅ Storage history created: {storage_result.inserted_id}")
         
-        # ✨ ADD: Check if ML prediction was accurate
+        # ✨ CHECK: ML prediction accuracy
         prediction_accuracy = "Unknown"
         if stored_item.get("predicted_location"):
             if stored_item["predicted_location"] == actual_location:
@@ -432,11 +437,13 @@ async def mark_inventory_increases_as_stored(
                 prediction_accuracy = f"Different - ML predicted {stored_item['predicted_location']}, used {actual_location}"
         
         return {
-            "message": f"Inventory increase for item {item_id} marked as stored",
+            "message": f"Item {item_id} successfully stored in location {actual_location}",
             "itemID": item_id,
+            "itemName": item_name,
             "quantity_stored": quantity_stored,
             "actual_location": actual_location,
             "receiving_id": record["receivingID"],
+            "location_inventory_updated": location_result.modified_count > 0,
             "storage_history_id": str(storage_result.inserted_id),
             "prediction_accuracy": prediction_accuracy,
             "ml_prediction": stored_item.get("predicted_location"),

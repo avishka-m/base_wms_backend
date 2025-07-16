@@ -1,4 +1,4 @@
-# ai-services/path_optimization/allocation_service.py
+# ai_services/path_optimization/allocation_service.py - UPDATED WITH LOCATION INVENTORY
 
 from typing import Dict, List, Any, Optional
 from warehouse_mapper import warehouse_mapper
@@ -11,82 +11,142 @@ class LocationAllocationService:
         self.mapper = warehouse_mapper
         self.predictor = location_predictor
     
-    async def get_occupied_sublocations(self, db_collection_storage) -> List[str]:
-        """Get list of all currently occupied sublocations"""
+    async def get_available_locations_from_inventory(self, db_collection_location_inventory, location_type: str = None) -> List[str]:
+        """Get list of all available locations from location_inventory collection"""
         try:
-            # Query storage history for occupied locations
-            occupied_docs = db_collection_storage.find({
-                "action": "stored",
-                # Add any additional filters for active storage
-            })
+            # Build query for available locations
+            query = {"available": True}
+            if location_type:
+                query["type"] = location_type.upper()
             
-            occupied_sublocations = []
-            for doc in occupied_docs:
+            # Query location inventory for available locations
+            available_docs = db_collection_location_inventory.find(query)
+            
+            available_locations = []
+            for doc in available_docs:
                 location_id = doc.get('locationID')
                 if location_id:
-                    occupied_sublocations.append(location_id)
+                    available_locations.append(location_id)
             
-            return occupied_sublocations
+            print(f"✅ Found {len(available_locations)} available locations of type {location_type or 'ALL'}")
+            return available_locations
             
         except Exception as e:
-            print(f"Error getting occupied locations: {str(e)}")
+            print(f"❌ Error getting available locations: {str(e)}")
             return []
     
-    def get_free_sublocations_in_rack_group(self, 
-                                          rack_group: str, 
-                                          occupied_sublocations: List[str]) -> List[str]:
-        """Get all free sublocations in a specific rack group"""
+    def filter_locations_by_rack_group(self, available_locations: List[str], target_rack_group: str) -> List[str]:
+        """Filter available locations to only include those in the target rack group"""
         
-        # Get all base locations in the rack group
-        base_locations = self.mapper.get_rack_locations(rack_group)
+        # Map rack groups to location prefixes
+        rack_group_prefixes = {
+            'B Rack 1': ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07'],
+            'B Rack 2': ['B08', 'B09', 'B10', 'B11', 'B12', 'B13', 'B14'], 
+            'B Rack 3': ['B15', 'B16', 'B17', 'B18', 'B19', 'B20', 'B21'],
+            'P Rack 1': ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07'],
+            'P Rack 2': ['P08', 'P09', 'P10', 'P11', 'P12', 'P13', 'P14'],
+            'D Rack 1': ['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07'],
+            'D Rack 2': ['D08', 'D09', 'D10', 'D11', 'D12', 'D13', 'D14']
+        }
         
-        free_sublocations = []
+        prefixes = rack_group_prefixes.get(target_rack_group, [])
+        if not prefixes:
+            print(f"⚠️ Unknown rack group: {target_rack_group}")
+            return available_locations
         
-        for base_location in base_locations:
-            # Get all 4 sublocations for this base location
-            all_sublocations = self.mapper.get_all_sublocations_for_base(base_location)
-            
-            # Filter out occupied ones
-            for sublocation in all_sublocations:
-                if sublocation not in occupied_sublocations:
-                    free_sublocations.append(sublocation)
+        # Filter locations that start with any of the target prefixes
+        filtered_locations = []
+        for location in available_locations:
+            slot_code = location.split('.')[0]  # Get B01 from B01.1
+            if slot_code in prefixes:
+                filtered_locations.append(location)
         
-        return free_sublocations
+        print(f"✅ Filtered to {len(filtered_locations)} locations in {target_rack_group}")
+        return filtered_locations
     
-    def select_optimal_sublocation(self, 
-                                 free_sublocations: List[str], 
-                                 preference: str = 'closest_to_receiving') -> str:
-        """Select the best sublocation from available free locations"""
+    def select_optimal_location(self, 
+                               available_locations: List[str], 
+                               preference: str = 'closest_to_receiving') -> str:
+        """Select the best location from available locations"""
         
-        if not free_sublocations:
+        if not available_locations:
             return None
         
         if preference == 'closest_to_receiving':
-            # Sort by distance from receiving point (0,0)
-            def distance_from_receiving(sublocation):
-                coords = self.mapper.get_coordinates(sublocation)
+            # Sort by distance from receiving point (0,0) and prefer lower floors
+            def location_priority(location_id):
+                slot_code = location_id.split('.')[0]  # Get B01 from B01.1
+                floor = int(location_id.split('.')[1])  # Get 1 from B01.1
+                
+                # Get slot coordinates
+                coords = self.get_slot_coordinates(slot_code)
                 if coords:
-                    x, y = coords.get('x', 0), coords.get('y', 0)
-                    return (x ** 2 + y ** 2) ** 0.5  # Euclidean distance
+                    x, y = coords['x'], coords['y']
+                    distance = (x ** 2 + y ** 2) ** 0.5  # Euclidean distance from (0,0)
+                    # Prefer lower floors (multiply floor by small factor)
+                    return distance + (floor * 0.1)
                 return float('inf')
             
-            free_sublocations.sort(key=distance_from_receiving)
-            return free_sublocations[0]
+            available_locations.sort(key=location_priority)
+            return available_locations[0]
         
         elif preference == 'lowest_floor_first':
-            # Prefer lower floors (easier access)
-            def floor_priority(sublocation):
-                if '.' in sublocation:
-                    floor = int(sublocation.split('.')[1])
-                    return floor
-                return 1
+            # Prefer lower floors first, then closest to receiving
+            def floor_priority(location_id):
+                floor = int(location_id.split('.')[1])
+                slot_code = location_id.split('.')[0]
+                coords = self.get_slot_coordinates(slot_code)
+                distance = 0
+                if coords:
+                    x, y = coords['x'], coords['y']
+                    distance = (x ** 2 + y ** 2) ** 0.5
+                return (floor, distance)  # Sort by floor first, then distance
             
-            free_sublocations.sort(key=floor_priority)
-            return free_sublocations[0]
+            available_locations.sort(key=floor_priority)
+            return available_locations[0]
         
         else:
             # Default: return first available
-            return free_sublocations[0]
+            return available_locations[0]
+    
+    def get_slot_coordinates(self, slot_code: str) -> Dict[str, int]:
+        """Get map coordinates for a slot code (e.g., B01 -> {x: 1, y: 2})"""
+        
+        # Map slot codes to coordinates based on your layout
+        slot_coordinates = {}
+        
+        # B slots (Medium/Bin)
+        # B01-B07: column 1 (x=1), rows 2-8
+        for i in range(1, 8):
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 1, 'y': 1 + i}
+        
+        # B08-B14: column 2 (x=3), rows 2-8  
+        for i in range(8, 15):
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 3, 'y': i - 6}
+        
+        # B15-B21: column 3 (x=5), rows 2-8
+        for i in range(15, 22):
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 5, 'y': i - 13}
+        
+        # P slots (Small/Pellet)  
+        # P01-P07: column 1 (x=7), rows 2-8
+        for i in range(1, 8):
+            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 7, 'y': 1 + i}
+        
+        # P08-P14: column 2 (x=9), rows 2-8
+        for i in range(8, 15):
+            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 9, 'y': i - 6}
+        
+        # D slots (Large)
+        # D01-D07: row 1 (y=10), columns 3-9
+        for i in range(1, 8):
+            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': 2 + i, 'y': 10}
+        
+        # D08-D14: row 2 (y=11), columns 3-9  
+        for i in range(8, 15):
+            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': i - 5, 'y': 11}
+        
+        return slot_coordinates.get(slot_code, {'x': 0, 'y': 0})
     
     async def allocate_location_for_item(self, 
                                        item_id: int,
@@ -95,8 +155,9 @@ class LocationAllocationService:
                                        quantity: int,
                                        db_collection_seasonal,
                                        db_collection_storage,
+                                       db_collection_location_inventory,  # ✨ NEW: Location inventory collection
                                        preference: str = 'closest_to_receiving') -> Dict[str, Any]:
-        """Main method to allocate a specific location for an item"""
+        """Main method to allocate a specific location for an item using location inventory"""
         
         try:
             # Step 1: Predict optimal rack group using ML model
@@ -109,130 +170,135 @@ class LocationAllocationService:
             )
             
             predicted_rack_group = prediction_result['rack_group']
+            print(f"🤖 ML predicted rack group: {predicted_rack_group}")
             
-            # Step 2: Get currently occupied sublocations
-            occupied_sublocations = await self.get_occupied_sublocations(db_collection_storage)
-            
-            # Step 3: Find free sublocations in the predicted rack group
-            free_sublocations = self.get_free_sublocations_in_rack_group(
-                predicted_rack_group, 
-                occupied_sublocations
+            # Step 2: Get available locations from location inventory  
+            # First try the predicted rack group type
+            location_type = self._get_location_type_from_rack_group(predicted_rack_group)
+            available_locations = await self.get_available_locations_from_inventory(
+                db_collection_location_inventory, 
+                location_type
             )
             
-            # Step 4: Select optimal sublocation
-            selected_sublocation = self.select_optimal_sublocation(
-                free_sublocations, 
-                preference
-            )
-            
-            if not selected_sublocation:
-                # Fallback: try other rack groups of same type
-                return await self._fallback_allocation(
-                    item_size, 
-                    occupied_sublocations, 
-                    preference,
-                    prediction_result
+            if not available_locations:
+                print(f"⚠️ No available locations of type {location_type}, trying all types")
+                # If no locations of predicted type, try all types
+                available_locations = await self.get_available_locations_from_inventory(
+                    db_collection_location_inventory
                 )
             
+            if not available_locations:
+                return {
+                    'success': False,
+                    'error': 'No available locations in warehouse',
+                    'allocated_location': None,
+                    'predicted_rack_group': predicted_rack_group,
+                    'allocation_reason': 'Warehouse is full'
+                }
+            
+            # Step 3: Filter to predicted rack group first
+            preferred_locations = self.filter_locations_by_rack_group(
+                available_locations, 
+                predicted_rack_group
+            )
+            
+            # Step 4: Select optimal location
+            if preferred_locations:
+                selected_location = self.select_optimal_location(preferred_locations, preference)
+                allocation_reason = f"ML model predicted {predicted_rack_group} with {prediction_result['confidence']:.2f} confidence"
+            else:
+                # Fallback to any available location if predicted rack group is full
+                selected_location = self.select_optimal_location(available_locations, preference)
+                actual_rack_group = self._get_rack_group_from_location(selected_location)
+                allocation_reason = f"Fallback allocation - predicted {predicted_rack_group} was full, using {actual_rack_group}"
+            
+            if not selected_location:
+                return {
+                    'success': False,
+                    'error': 'No suitable location found',
+                    'allocated_location': None
+                }
+            
             # Step 5: Get coordinates for the selected location
-            coordinates = self.mapper.get_coordinates(selected_sublocation)
+            slot_code = selected_location.split('.')[0]
+            floor = int(selected_location.split('.')[1])
+            coordinates = self.get_slot_coordinates(slot_code)
             
             return {
                 'success': True,
-                'allocated_location': selected_sublocation,
-                'base_location': self.mapper.parse_sublocation_to_base(selected_sublocation),
+                'allocated_location': selected_location,
+                'slot_code': slot_code,
                 'coordinates': {
                     'x': coordinates.get('x', 0),
                     'y': coordinates.get('y', 0),
-                    'floor': int(selected_sublocation.split('.')[1]) if '.' in selected_sublocation else 1
+                    'floor': floor
                 },
                 'predicted_rack_group': predicted_rack_group,
                 'confidence': prediction_result['confidence'],
-                'total_free_locations': len(free_sublocations),
-                'allocation_reason': f"ML model predicted {predicted_rack_group} with {prediction_result['confidence']:.2f} confidence"
+                'total_available_locations': len(available_locations),
+                'allocation_reason': allocation_reason
             }
             
         except Exception as e:
-            print(f"Error in location allocation: {str(e)}")
+            print(f"❌ Error in location allocation: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
                 'allocated_location': None
             }
     
-    async def _fallback_allocation(self, 
-                                 item_size: str, 
-                                 occupied_sublocations: List[str],
-                                 preference: str,
-                                 prediction_result: Dict) -> Dict[str, Any]:
-        """Fallback allocation when predicted rack group is full"""
-        
-        # Define fallback rack groups based on item size
-        fallback_groups = []
-        
-        if item_size.upper() == 'S':
-            fallback_groups = ['P Rack 1', 'P Rack 2', 'B Rack 1', 'B Rack 2', 'B Rack 3']
-        elif item_size.upper() == 'L':
-            fallback_groups = ['D Rack 1', 'D Rack 2', 'B Rack 3', 'B Rack 2', 'B Rack 1']
-        else:  # Medium
-            fallback_groups = ['B Rack 1', 'B Rack 2', 'B Rack 3', 'P Rack 1', 'P Rack 2']
-        
-        for rack_group in fallback_groups:
-            free_sublocations = self.get_free_sublocations_in_rack_group(
-                rack_group, 
-                occupied_sublocations
-            )
-            
-            if free_sublocations:
-                selected_sublocation = self.select_optimal_sublocation(
-                    free_sublocations, 
-                    preference
-                )
-                
-                coordinates = self.mapper.get_coordinates(selected_sublocation)
-                
-                return {
-                    'success': True,
-                    'allocated_location': selected_sublocation,
-                    'base_location': self.mapper.parse_sublocation_to_base(selected_sublocation),
-                    'coordinates': {
-                        'x': coordinates.get('x', 0),
-                        'y': coordinates.get('y', 0),
-                        'floor': int(selected_sublocation.split('.')[1]) if '.' in selected_sublocation else 1
-                    },
-                    'predicted_rack_group': prediction_result['rack_group'],
-                    'actual_rack_group': rack_group,
-                    'confidence': prediction_result['confidence'],
-                    'total_free_locations': len(free_sublocations),
-                    'allocation_reason': f"Fallback allocation - predicted {prediction_result['rack_group']} was full"
-                }
-        
-        # If no space found anywhere
-        return {
-            'success': False,
-            'error': 'No free locations available in warehouse',
-            'allocated_location': None,
-            'predicted_rack_group': prediction_result['rack_group'],
-            'allocation_reason': 'Warehouse is full'
-        }
+    def _get_location_type_from_rack_group(self, rack_group: str) -> str:
+        """Convert rack group to location type"""
+        if 'B Rack' in rack_group:
+            return 'M'  # Medium
+        elif 'P Rack' in rack_group:
+            return 'S'  # Small
+        elif 'D Rack' in rack_group:
+            return 'D'  # Large
+        return 'M'  # Default to Medium
     
-    def get_location_details(self, sublocation: str) -> Dict[str, Any]:
+    def _get_rack_group_from_location(self, location_id: str) -> str:
+        """Get rack group from location ID"""
+        slot_code = location_id.split('.')[0]
+        
+        if slot_code.startswith('B'):
+            slot_num = int(slot_code[1:])
+            if 1 <= slot_num <= 7:
+                return 'B Rack 1'
+            elif 8 <= slot_num <= 14:
+                return 'B Rack 2'
+            elif 15 <= slot_num <= 21:
+                return 'B Rack 3'
+        elif slot_code.startswith('P'):
+            slot_num = int(slot_code[1:])
+            if 1 <= slot_num <= 7:
+                return 'P Rack 1'
+            elif 8 <= slot_num <= 14:
+                return 'P Rack 2'
+        elif slot_code.startswith('D'):
+            slot_num = int(slot_code[1:])
+            if 1 <= slot_num <= 7:
+                return 'D Rack 1'
+            elif 8 <= slot_num <= 14:
+                return 'D Rack 2'
+        
+        return 'Unknown'
+    
+    def get_location_details(self, location_id: str) -> Dict[str, Any]:
         """Get detailed information about a specific location"""
         
-        if not self.mapper.validate_location(sublocation):
-            return {'valid': False, 'error': 'Invalid location code'}
-        
-        base_location = self.mapper.parse_sublocation_to_base(sublocation)
-        coordinates = self.mapper.get_coordinates(sublocation)
-        rack_group = self.mapper.get_rack_group_from_location(sublocation)
+        slot_code = location_id.split('.')[0]
+        floor = int(location_id.split('.')[1]) if '.' in location_id else 1
+        coordinates = self.get_slot_coordinates(slot_code)
+        rack_group = self._get_rack_group_from_location(location_id)
         
         return {
             'valid': True,
-            'sublocation': sublocation,
-            'base_location': base_location,
+            'location_id': location_id,
+            'slot_code': slot_code,
+            'floor': floor,
             'coordinates': coordinates,
-            'rack_group': rack_group,
-            'floor': int(sublocation.split('.')[1]) if '.' in sublocation else 1
+            'rack_group': rack_group
         }
 
 # Global instance

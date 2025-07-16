@@ -1,26 +1,32 @@
 import os
 from typing import Dict, List, Any
 from dotenv import load_dotenv 
+from ...config.base import (
+    MONGODB_URL, DATABASE_NAME, PROJECT_VERSION, ENVIRONMENT as BASE_ENVIRONMENT,
+    get_database_config
+)
 
 # Load environment variables
 load_dotenv()
 
 
+# AI SERVICES PROJECT INFORMATION
 
-# Project Information
 PROJECT_NAME = "Seasonal Inventory Prediction"
-PROJECT_VERSION = "1.0.0"
 PROJECT_DESCRIPTION = "AI-powered seasonal inventory forecasting using Facebook Prophet"
 
-# API Configuration
+# =============================================================================
+# AI-SPECIFIC API CONFIGURATION  
+# =============================================================================
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8003"))
 API_PREFIX = "/api/v1"
 API_TITLE = "Seasonal Inventory API"
 
-# Database Configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
+# =============================================================================
+# AI-SPECIFIC DATABASE CONFIGURATION
+# =============================================================================
+# Database URLs inherited from base config
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 # WMS Integration
@@ -99,7 +105,7 @@ WMS_API_TIMEOUT = 30
 # }
 
 # Data Paths
-DATA_DIR = "data"
+DATA_DIR = "base_wms_backend/ai_services/seasonal_inventory/data"
 DATASETS_DIR = f"{DATA_DIR}/datasets"
 PROCESSED_DIR = f"{DATA_DIR}/processed"
 MODELS_DIR = f"{DATA_DIR}/models"
@@ -143,11 +149,9 @@ PROPHET_CONFIG = {
         "countries": ["US", "BR", "GB", "IN"],
         "custom_events": [
             {"holiday": "Black Friday", "date": "2024-11-29"},
-            {"holiday": "Cyber Monday", "date": "2024-12-02"},
-            {"holiday": "Back to School", "date": "2024-08-15"},
+           
             {"holiday": "Valentine's Day", "date": "2024-02-14"},
-            {"holiday": "Mother's Day", "date": "2024-05-12"},
-            {"holiday": "Father's Day", "date": "2024-06-16"}
+           
         ]
     }
 }
@@ -168,7 +172,7 @@ TRAINING_CONFIG = {
     
     "validation": {
         "train_ratio": 0.8,
-        "validation_ratio": 0.1,
+        #"validation_ratio": 0.1,
         "test_ratio": 0.1,
         "min_train_days": 365
     }
@@ -324,8 +328,10 @@ ALERT_CONFIG = {
 }
 
 
-# Environment Settings
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+# =============================================================================
+# AI-SPECIFIC ENVIRONMENT SETTINGS
+# =============================================================================
+ENVIRONMENT = BASE_ENVIRONMENT  # Inherit from base config
 
 if ENVIRONMENT == "production":
     # Production overrides
@@ -340,26 +346,32 @@ elif ENVIRONMENT == "development":
     CACHE_CONFIG["forecast_cache_ttl"] = 600  # 10 minutes
 
 elif ENVIRONMENT == "testing":
-    # Testing overrides
+    # Testing overrides - use different database name
     DATABASE_NAME = "warehouse_management_test"
     CACHE_CONFIG["forecast_cache_ttl"] = 60  # 1 minute
     PERFORMANCE_CONFIG["max_workers"] = 1
 
+# =============================================================================
+# AI-SPECIFIC MODEL CONFIGURATION
+# =============================================================================
+# Model Caching Strategy
+MODEL_CACHE_STRATEGY = os.getenv("MODEL_CACHE_STRATEGY", "data_hash")  # Options: "never", "time_based", "data_hash", "always"
+MODEL_CACHE_HOURS = int(os.getenv("MODEL_CACHE_HOURS", "24"))  # Only used if strategy is "time_based"
 
+# Model Retraining Configuration
+AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").lower() == "true"
+RETRAIN_SCHEDULE_CRON = os.getenv("RETRAIN_SCHEDULE_CRON", "0 2 * * *")  # Daily at 2 AM
 
+# =============================================================================
+# AI-SPECIFIC UTILITY FUNCTIONS
+# =============================================================================
 def get_kaggle_config() -> Dict[str, Any]:
     """Get Kaggle API configuration."""
+    kaggle_username = os.getenv("KAGGLE_USERNAME")
+    kaggle_key = os.getenv("KAGGLE_KEY")
     return {
-        "username": KAGGLE_USERNAME,
-        "key": KAGGLE_KEY
-    }
-
-def get_database_config() -> Dict[str, str]:
-    """Get database configuration."""
-    return {
-        "mongodb_url": MONGODB_URL,
-        "database_name": DATABASE_NAME,
-        "redis_url": REDIS_URL
+        "username": kaggle_username,
+        "key": kaggle_key
     }
 
 def get_prophet_config() -> Dict[str, Any]:
@@ -375,19 +387,11 @@ def get_api_config() -> Dict[str, Any]:
         "title": API_TITLE
     }
 
-def validate_config() -> bool:
-    """Validate configuration settings."""
-    required_vars = [
-        "MONGODB_URL",
-        "DATABASE_NAME"
-    ]
-    
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        raise ValueError(f"Missing required environment variables: {missing_vars}")
-    
+def validate_ai_config() -> bool:
+    """Validate AI-specific configuration settings."""
+    # Base validation is handled by base config
+    # Add AI-specific validations here if needed
     return True
 
 # Validate configuration on import
-validate_config()
+validate_ai_config()

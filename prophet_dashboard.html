@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prophet Forecasting Dashboard</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s ease;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status.loading {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .forecast-result {
+            margin-top: 20px;
+        }
+        .prediction-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .prediction-item:last-child {
+            border-bottom: none;
+        }
+        .summary-stats {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔮 Prophet Forecasting Dashboard</h1>
+        <p>AI-powered inventory demand forecasting with custom time ranges</p>
+    </div>
+
+    <div class="grid">
+        <!-- Single Product Forecast -->
+        <div class="card">
+            <h2>📊 Single Product Forecast</h2>
+            <form id="singleForecastForm">
+                <div class="form-group">
+                    <label for="productId">Product ID:</label>
+                    <select id="productId" required>
+                        <option value="">Select a product...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="horizonDays">Forecast Days:</label>
+                    <input type="number" id="horizonDays" value="30" min="1" max="365" required>
+                </div>
+                <div class="form-group">
+                    <label for="confidence">Confidence Level:</label>
+                    <select id="confidence" required>
+                        <option value="0.80">80%</option>
+                        <option value="0.90">90%</option>
+                        <option value="0.95" selected>95%</option>
+                        <option value="0.99">99%</option>
+                    </select>
+                </div>
+                <button type="submit">Generate Forecast</button>
+            </form>
+            <div id="singleForecastResult"></div>
+        </div>
+
+        <!-- Custom Date Range Forecast -->
+        <div class="card">
+            <h2>📅 Custom Date Range Forecast</h2>
+            <form id="customRangeForm">
+                <div class="form-group">
+                    <label for="customProductId">Product ID:</label>
+                    <select id="customProductId" required>
+                        <option value="">Select a product...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="startDate">Start Date:</label>
+                    <input type="date" id="startDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="endDate">End Date:</label>
+                    <input type="date" id="endDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="customConfidence">Confidence Level:</label>
+                    <select id="customConfidence" required>
+                        <option value="0.80">80%</option>
+                        <option value="0.90">90%</option>
+                        <option value="0.95" selected>95%</option>
+                        <option value="0.99">99%</option>
+                    </select>
+                </div>
+                <button type="submit">Generate Custom Forecast</button>
+            </form>
+            <div id="customRangeResult"></div>
+        </div>
+    </div>
+
+    <!-- Service Status -->
+    <div class="card">
+        <h2>🔧 Service Status</h2>
+        <button onclick="checkServiceStatus()">Check Status</button>
+        <div id="serviceStatus"></div>
+    </div>
+
+    <!-- Inventory Recommendations -->
+    <div class="card">
+        <h2>💡 Inventory Recommendations</h2>
+        <button onclick="getRecommendations()">Get AI Recommendations</button>
+        <div id="recommendationsResult"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8000/api/prophet';
+        
+        // Set minimum date to tomorrow
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        document.getElementById('startDate').value = tomorrow.toISOString().split('T')[0];
+        
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        document.getElementById('endDate').value = nextWeek.toISOString().split('T')[0];
+
+        // Load available products on page load
+        async function loadProducts() {
+            try {
+                const response = await fetch(`${API_BASE}/products`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const productSelects = ['productId', 'customProductId'];
+                    productSelects.forEach(selectId => {
+                        const select = document.getElementById(selectId);
+                        select.innerHTML = '<option value="">Select a product...</option>';
+                        
+                        data.products.forEach(product => {
+                            const option = document.createElement('option');
+                            option.value = product.product_id;
+                            option.textContent = `${product.product_id} ${product.has_trained_model ? '(✓ Model)' : '(New)'}`;
+                            select.appendChild(option);
+                        });
+                    });
+                } else {
+                    showStatus('error', 'Failed to load products: ' + data.message, 'serviceStatus');
+                }
+            } catch (error) {
+                showStatus('error', 'Error loading products: ' + error.message, 'serviceStatus');
+            }
+        }
+
+        // Single product forecast
+        document.getElementById('singleForecastForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const productId = document.getElementById('productId').value;
+            const horizonDays = parseInt(document.getElementById('horizonDays').value);
+            const confidence = parseFloat(document.getElementById('confidence').value);
+            
+            const payload = {
+                product_id: productId,
+                horizon_days: horizonDays,
+                confidence_interval: confidence,
+                include_external_factors: true
+            };
+            
+            showStatus('loading', 'Generating forecast...', 'singleForecastResult');
+            
+            try {
+                const response = await fetch(`${API_BASE}/forecast/single`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    displayForecastResult(data, 'singleForecastResult');
+                } else {
+                    showStatus('error', 'Forecast failed: ' + data.message, 'singleForecastResult');
+                }
+            } catch (error) {
+                showStatus('error', 'Error generating forecast: ' + error.message, 'singleForecastResult');
+            }
+        });
+
+        // Custom range forecast
+        document.getElementById('customRangeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const productId = document.getElementById('customProductId').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const confidence = parseFloat(document.getElementById('customConfidence').value);
+            
+            const payload = {
+                product_id: productId,
+                start_date: startDate,
+                end_date: endDate,
+                confidence_interval: confidence
+            };
+            
+            showStatus('loading', 'Generating custom range forecast...', 'customRangeResult');
+            
+            try {
+                const response = await fetch(`${API_BASE}/forecast/custom-range`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    displayForecastResult(data, 'customRangeResult');
+                } else {
+                    showStatus('error', 'Custom forecast failed: ' + data.message, 'customRangeResult');
+                }
+            } catch (error) {
+                showStatus('error', 'Error generating custom forecast: ' + error.message, 'customRangeResult');
+            }
+        });
+
+        // Check service status
+        async function checkServiceStatus() {
+            showStatus('loading', 'Checking service status...', 'serviceStatus');
+            
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                if (data.status === 'healthy') {
+                    const statusInfo = data.service_status;
+                    const statusText = `Service is healthy. ${statusInfo.models_available} trained models available.`;
+                    showStatus('success', statusText, 'serviceStatus');
+                } else {
+                    showStatus('error', 'Service is unhealthy: ' + data.detail, 'serviceStatus');
+                }
+            } catch (error) {
+                showStatus('error', 'Error checking status: ' + error.message, 'serviceStatus');
+            }
+        }
+
+        // Get recommendations
+        async function getRecommendations() {
+            showStatus('loading', 'Generating recommendations...', 'recommendationsResult');
+            
+            const payload = {
+                forecast_days: 30,
+                min_confidence: 0.8,
+                include_seasonal_analysis: true
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/recommendations/inventory`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    displayRecommendations(data, 'recommendationsResult');
+                } else {
+                    showStatus('error', 'Recommendations failed: ' + data.message, 'recommendationsResult');
+                }
+            } catch (error) {
+                showStatus('error', 'Error generating recommendations: ' + error.message, 'recommendationsResult');
+            }
+        }
+
+        // Display functions
+        function showStatus(type, message, elementId) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function displayForecastResult(data, elementId) {
+            const element = document.getElementById(elementId);
+            const summary = data.summary;
+            const predictions = data.predictions.slice(0, 7); // Show first 7 days
+            
+            let html = `
+                <div class="status success">Forecast generated successfully!</div>
+                <div class="summary-stats">
+                    <h4>📈 Forecast Summary</h4>
+                    <div class="stat-item">
+                        <span>Total Predicted Demand:</span>
+                        <strong>${summary.total_predicted_demand.toFixed(2)} units</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Average Daily Demand:</span>
+                        <strong>${summary.average_daily_demand.toFixed(2)} units</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Peak Daily Demand:</span>
+                        <strong>${summary.peak_daily_demand.toFixed(2)} units</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Confidence Level:</span>
+                        <strong>${(summary.confidence_interval * 100).toFixed(0)}%</strong>
+                    </div>
+                </div>
+                <div class="forecast-result">
+                    <h4>📅 Daily Predictions (First 7 days)</h4>
+            `;
+            
+            predictions.forEach(pred => {
+                html += `
+                    <div class="prediction-item">
+                        <span>${pred.date}</span>
+                        <span><strong>${pred.predicted_demand.toFixed(2)}</strong> units (${pred.lower_bound.toFixed(2)} - ${pred.upper_bound.toFixed(2)})</span>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            element.innerHTML = html;
+        }
+
+        function displayRecommendations(data, elementId) {
+            const element = document.getElementById(elementId);
+            const recommendations = data.recommendations.slice(0, 10); // Show first 10
+            
+            let html = `
+                <div class="status success">Recommendations generated successfully!</div>
+                <div class="summary-stats">
+                    <h4>🎯 AI Recommendations</h4>
+                    <div class="stat-item">
+                        <span>Products Analyzed:</span>
+                        <strong>${data.total_products_analyzed}</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Analysis Period:</span>
+                        <strong>${data.analysis_period_days} days</strong>
+                    </div>
+                </div>
+                <div class="forecast-result">
+                    <h4>💡 Action Items</h4>
+            `;
+            
+            recommendations.forEach(rec => {
+                const actionEmoji = rec.action === 'increase_stock' ? '📈' : rec.action === 'reduce_stock' ? '📉' : '➡️';
+                const priorityColor = rec.priority === 'high' ? '#dc3545' : rec.priority === 'medium' ? '#ffc107' : '#28a745';
+                
+                html += `
+                    <div class="prediction-item">
+                        <span>${actionEmoji} ${rec.product_id}</span>
+                        <span>
+                            <strong style="color: ${priorityColor}">${rec.action.replace('_', ' ').toUpperCase()}</strong>
+                            (${rec.priority} priority)<br>
+                            <small>Avg: ${rec.predicted_avg_daily_demand.toFixed(2)} units/day</small>
+                        </span>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            element.innerHTML = html;
+        }
+
+        // Load products when page loads
+        loadProducts();
+        
+        // Check service status on load
+        checkServiceStatus();
+    </script>
+</body>
+</html>

@@ -1,11 +1,14 @@
 import pandas as pd
 import numpy as np
 import logging
+import os
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from pathlib import Path#for handling the file system paths
 import pickle #or saving the model to the disk
 import json#for reading and writing the model configuration or result
+import hashlib
+import os
 
 # Prophet imports
 # try:
@@ -20,15 +23,24 @@ from prophet.plot import plot_cross_validation_metric
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from ..config import PROPHET_CONFIG, MODELS_DIR, PROCESSED_DIR
-from base_wms_backend.app.services.inventory_service import InventoryService
+from ai_services.seasonal_inventory.config import PROPHET_CONFIG, MODELS_DIR, PROCESSED_DIR
+try:
+    from ai_services.seasonal_inventory.config import MODEL_CACHE_STRATEGY, MODEL_CACHE_HOURS
+except ImportError:
+    MODEL_CACHE_STRATEGY = "data_hash"  # Default strategy for static data
+    MODEL_CACHE_HOURS = 24
+
+# Optional import - only needed if saving to WMS database
+try:
+    from base_wms_backend.app.services.inventory_service import InventoryService
+    INVENTORY_SERVICE_AVAILABLE = True
+except ImportError:
+    INVENTORY_SERVICE_AVAILABLE = False
+    print("Warning: InventoryService not available. Forecasts won't be saved to WMS database.")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-df = pd.read_csv(str(Path(PROCESSED_DIR) / "daily_demand_by_product_modern.csv"))
-print(df.columns)
 
 class ProphetForecaster:
     
@@ -47,6 +59,9 @@ class ProphetForecaster:
         # Model storage
         self.models_dir = Path(MODELS_DIR)
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Data checksum
+        self.data_hash = None  # Store hash of training data
         
         logger.info(f"Prophet Forecaster initialized for product: {product_id or 'ALL'}")
     
@@ -178,7 +193,6 @@ class ProphetForecaster:
     
     def add_external_regressors(self, model: Prophet, data: pd.DataFrame) -> Prophet:
         """
-        Add external regressors to the model.
         
         Args:
             model: Prophet model
@@ -191,7 +205,7 @@ class ProphetForecaster:
         external_regressors = getattr(self.model_config, 'external_features', None)
         if external_regressors is None:
             try:
-                from ..config import FEATURE_CONFIG
+                from ai_services.seasonal_inventory.config import FEATURE_CONFIG
                 external_regressors = FEATURE_CONFIG.get("external_features", [])
             except ImportError:
                 external_regressors = []
@@ -222,6 +236,10 @@ class ProphetForecaster:
             Training results and metrics
         """
         logger.info("Starting Prophet model training")
+        
+        # Calculate data hash before training
+        if self.product_id:
+            self.data_hash = self._calculate_data_hash(data)
         
         # Prepare data
         self.training_data = self.prepare_data(data, target_column)
@@ -412,7 +430,8 @@ class ProphetForecaster:
             'product_id': self.product_id,
             'training_data_shape': self.training_data.shape,
             'trained_date': datetime.now(),
-            'is_trained': self.is_trained
+            'is_trained': self.is_trained,
+            'data_hash': self.data_hash  # Save data hash
         }
         
         with open(model_path, 'wb') as f:
@@ -421,31 +440,234 @@ class ProphetForecaster:
         logger.info(f"Model saved to: {model_path}")
         return str(model_path)
     
-# #     def load_model(self, model_path: str) -> bool:
-# #         """
-# #         Load a trained model from disk.
+    def _calculate_data_hash(self, data: pd.DataFrame) -> str:
+        """Calculate hash of training data to detect changes"""
+        # Filter data for this product and sort for consistent hashing
+        product_data = data[data['product_id'] == self.product_id].copy()
+        product_data = product_data.sort_values(['ds', 'y']).reset_index(drop=True)
         
-# #         Args:
-# #             model_path: Path to saved model
+        # Create hash from relevant columns
+        data_string = product_data[['ds', 'y']].to_string()
+        return hashlib.md5(data_string.encode()).hexdigest()
+    
+    def _should_retrain(self, data: pd.DataFrame, model_path: str) -> bool:
+        """Check if model should be retrained based on data changes"""
+        current_hash = self._calculate_data_hash(data)
+        
+        try:
+            with open(model_path, 'rb') as f:
+                model_data = pickle.load(f)
+            saved_hash = model_data.get('data_hash', '')
+            return current_hash != saved_hash
+        except:
+            return True  # Retrain if can't read model
+    
+    def _should_use_cached_model(self, data: pd.DataFrame, model_path: str) -> bool:
+        """
+        Determine if cached model should be used based on the configured caching strategy.
+        
+        Strategies:
+        - "never": Always retrain (useful for development/testing)
+        - "always": Never retrain, always use cached models (best for static data)
+        - "time_based": Retrain after specified hours (original behavior)
+        - "data_hash": Retrain only when data changes (recommended for static data)
+        
+        Returns:
+            True if cached model should be used, False if retraining is needed
+        """
+        if MODEL_CACHE_STRATEGY == "never":
+            logger.info("Cache strategy: NEVER - Always retraining")
+            return False
+        elif MODEL_CACHE_STRATEGY == "always":
+            logger.info("Cache strategy: ALWAYS - Using cached model without checks")
+            return True
+        elif MODEL_CACHE_STRATEGY == "time_based":
+            # Use time-based caching (original 24-hour logic)
+            try:
+                mtime = datetime.fromtimestamp(os.path.getmtime(model_path))
+                is_recent = datetime.now() - mtime < timedelta(hours=MODEL_CACHE_HOURS)
+                logger.info(f"Cache strategy: TIME_BASED - Model age: {datetime.now() - mtime}, Recent: {is_recent}")
+                return is_recent
+            except:
+                return False
+        elif MODEL_CACHE_STRATEGY == "data_hash":
+            # Use data hash-based caching (recommended for static data)
+            should_use_cache = not self._should_retrain(data, model_path)
+            logger.info(f"Cache strategy: DATA_HASH - Data unchanged: {should_use_cache}")
+            return should_use_cache
+        else:
+            # Default to data hash strategy
+            logger.warning(f"Unknown cache strategy '{MODEL_CACHE_STRATEGY}', defaulting to data_hash")
+            return not self._should_retrain(data, model_path)
+    
+    def load_and_predict(self, model_path: str, future_dates: List) -> Optional[pd.DataFrame]:
+        """
+        Load a saved model and make predictions for specified future dates
+        
+        Args:
+            model_path: Path to the saved Prophet model
+            future_dates: List of future dates to predict
             
-# #         Returns:
-# #             True if loaded successfully
-# #         """
-# #         try:
-# #             with open(model_path, 'rb') as f:
-# #                 model_data = pickle.load(f)
+        Returns:
+            DataFrame with predictions or None if failed
+        """
+        try:
+            if not os.path.exists(model_path):
+                logger.error(f"Model file not found: {model_path}")
+                return None
             
-# #             self.model = model_data['model']
-# #             self.model_config = model_data['config']
-# #             self.product_id = model_data['product_id']
-# #             self.is_trained = model_data['is_trained']
+            # Load the saved model
+            with open(model_path, 'rb') as f:
+                saved_data = pickle.load(f)
+                
+            self.model = saved_data['model']
+            self.product_id = saved_data.get('product_id', 'unknown')
             
-# #             logger.info(f" Model loaded from: {model_path}")
-# #             return True
+            # Create future dataframe
+            future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
             
-# #         except Exception as e:
-# #             logger.error(f" Failed to load model: {e}")
-# #             return False
+            # Make predictions
+            forecast = self.model.predict(future_df)
+            
+            # Return relevant columns
+            return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+            
+        except Exception as e:
+            logger.error(f"Error loading model and predicting: {e}")
+            return None
+    
+    def train_and_predict(self, product_filter: str, future_dates: List, save_model: bool = True) -> Optional[pd.DataFrame]:
+        """
+        Train a new model for a specific product and make predictions
+        
+        Args:
+            product_filter: Product ID to filter data for
+            future_dates: List of future dates to predict
+            save_model: Whether to save the trained model
+            
+        Returns:
+            DataFrame with predictions or None if failed
+        """
+        try:
+            # Load and filter data
+            if not hasattr(self, 'data') or self.data is None:
+                self._load_data()
+            
+            if self.data is None:
+                logger.error("No data available for training")
+                return None
+            
+            # Filter data for specific product
+            product_data = self.data[self.data['product_id'] == product_filter].copy()
+            
+            if product_data.empty:
+                logger.error(f"No data found for product {product_filter}")
+                return None
+            
+            logger.info(f"Training model for product {product_filter} with {len(product_data)} data points")
+            
+            # Prepare data for Prophet
+            prophet_data = self.prepare_data(product_data, target_column='demand')
+            
+            # Train model
+            training_result = self.train(prophet_data, target_column='y')
+            
+            if training_result['status'] != 'success':
+                logger.error(f"Failed to train model for {product_filter}")
+                return None
+            
+            # Make predictions
+            future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
+            forecast = self.model.predict(future_df)
+            
+            # Save model if requested
+            if save_model:
+                model_filename = f"{product_filter}_prophet_model.pkl"
+                self.save_model(model_filename)
+                logger.info(f"Model saved for product {product_filter}")
+            
+            return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
+            
+        except Exception as e:
+            logger.error(f"Error training and predicting for {product_filter}: {e}")
+            return None
+    
+    def train_product_model(self, product_id: str, save_model: bool = True) -> Optional[str]:
+        """
+        Train a model for a specific product without making predictions
+        
+        Args:
+            product_id: Product ID to train model for
+            save_model: Whether to save the trained model
+            
+        Returns:
+            Path to saved model file or None if failed
+        """
+        try:
+            # Load and filter data
+            if not hasattr(self, 'data') or self.data is None:
+                self._load_data()
+            
+            if self.data is None:
+                logger.error("No data available for training")
+                return None
+            
+            # Filter data for specific product
+            product_data = self.data[self.data['product_id'] == product_id].copy()
+            
+            if product_data.empty:
+                logger.error(f"No data found for product {product_id}")
+                return None
+            
+            if len(product_data) < 14:  # Need at least 2 weeks of data
+                logger.warning(f"Insufficient data for product {product_id}: {len(product_data)} days")
+                return None
+            
+            logger.info(f"Training model for product {product_id} with {len(product_data)} data points")
+            
+            # Prepare data for Prophet
+            prophet_data = self.prepare_data(product_data, target_column='demand')
+            
+            # Train model
+            training_result = self.train(prophet_data, target_column='y')
+            
+            if training_result['status'] != 'success':
+                logger.error(f"Failed to train model for {product_id}")
+                return None
+            
+            # Save model if requested
+            if save_model:
+                model_filename = f"{product_id}_prophet_model.pkl"
+                model_path = self.save_model(model_filename)
+                logger.info(f"Model saved for product {product_id}: {model_path}")
+                return model_path
+            
+            return "model_trained_but_not_saved"
+            
+        except Exception as e:
+            logger.error(f"Error training model for {product_id}: {e}")
+            return None
+    
+    def _load_data(self):
+        """Load the training data if not already loaded"""
+        try:
+            data_path = Path(PROCESSED_DIR) / 'daily_demand_by_product_modern.csv'
+            if data_path.exists():
+                self.data = pd.read_csv(data_path)
+                # Ensure date column is datetime
+                if 'date' in self.data.columns:
+                    self.data['date'] = pd.to_datetime(self.data['date'])
+                elif 'ds' in self.data.columns:
+                    self.data['ds'] = pd.to_datetime(self.data['ds'])
+                    self.data['date'] = self.data['ds']
+                
+                logger.info(f"Loaded data with {len(self.data)} records")
+            else:
+                logger.error(f"Data file not found: {data_path}")
+                self.data = None
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            self.data = None
     
     def plot_forecast(self, forecast: pd.DataFrame = None, save_path: str = None) -> None:
         """
@@ -507,255 +729,464 @@ class ProphetForecaster:
         
         plt.show()
     
-def plot_demand_by_month_and_year(data: pd.DataFrame, product_id: str = None):
-    """
-    Plot demand by month and by year for a given product (or all products).
-    """
-    import matplotlib.pyplot as plt
-    if product_id:
-        data = data[data['product_id'] == product_id]
-    data = data.copy()
-    data['month'] = data['ds'].dt.month
-    data['year'] = data['ds'].dt.year
-    monthly = data.groupby(['year', 'month'])['y'].sum().reset_index()
-    plt.figure(figsize=(12, 6))
-    for year in sorted(monthly['year'].unique()):
-        plt.plot(
-            monthly[monthly['year'] == year]['month'],
-            monthly[monthly['year'] == year]['y'],
-            marker='o', label=f'Year {year}'
-        )
-    plt.title(f"Monthly Demand Pattern{' for Product ' + str(product_id) if product_id else ''}")
-    plt.xlabel('Month')
-    plt.ylabel('Total Demand')
-    plt.legend()
-    plt.show()
-    # Demand by year (total)
-    yearly = data.groupby('year')['y'].sum().reset_index()
-    plt.figure(figsize=(8, 4))
-    plt.bar(yearly['year'], yearly['y'])
-    plt.title(f"Yearly Demand Pattern{' for Product ' + str(product_id) if product_id else ''}")
-    plt.xlabel('Year')
-    plt.ylabel('Total Demand')
-    plt.show()
-
-def plot_demand_by_month_year(data: pd.DataFrame, product_id: str, month: int = None, year: int = None):
-    """
-    Plot demand for a specific product, filtered by month and/or year.
-    Args:
-        data: DataFrame with columns ['ds', 'y', 'product_id']
-        product_id: Product to plot
-        month: (Optional) Month (1-12) to filter
-        year: (Optional) Year (e.g., 2024) to filter
-    """
-    df = data[data['product_id'] == product_id].copy()
-    df['ds'] = pd.to_datetime(df['ds'])
-    if month is not None:
-        df = df[df['ds'].dt.month == month]
-    if year is not None:
-        df = df[df['ds'].dt.year == year]
-    if df.empty:
-        print(f"No data for product {product_id} in month={month}, year={year}")
-        return
-    plt.figure(figsize=(12, 6))
-    plt.plot(df['ds'], df['y'], marker='o', linestyle='-', label=f'Demand for {product_id}')
-    plt.title(f"Demand for Product {product_id}" + (f" - {year}" if year else "") + (f"/Month {month}" if month else ""))
-    plt.xlabel('Date')
-    plt.ylabel('Demand')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+    def evaluate_with_train_test_split(self, data: pd.DataFrame, train_ratio: float = 0.8, 
+                                     test_ratio: float = 0.2, target_column: str = 'y') -> Dict:
+        """
+        Evaluate model performance using proper train/test split.
+        
+        This is different from Prophet's cross-validation - it uses a chronological
+        split to simulate real-world deployment where you train on historical data
+        and test on truly unseen future data.
+        
+        Args:
+            data: Full dataset for evaluation
+            train_ratio: Proportion of data for training (e.g., 0.8 = 80%)
+            test_ratio: Proportion of data for testing (e.g., 0.2 = 20%)
+            target_column: Target variable column name
+            
+        Returns:
+            Dictionary with train/test split evaluation results
+        """
+        logger.info(f"Starting train/test split evaluation: {train_ratio:.1%} train, {test_ratio:.1%} test")
+        
+        try:
+            # Prepare the data
+            prepared_data = self.prepare_data(data, target_column)
+            
+            if len(prepared_data) < 50:
+                raise ValueError("Insufficient data for train/test split. Need at least 50 data points.")
+            
+            # Calculate split points (chronological split for time series)
+            total_points = len(prepared_data)
+            train_size = int(total_points * train_ratio)
+            
+            # Split data chronologically
+            train_data = prepared_data.iloc[:train_size].copy()
+            test_data = prepared_data.iloc[train_size:].copy()
+            
+            logger.info(f"Split data: {len(train_data)} train points, {len(test_data)} test points")
+            
+            if len(test_data) < 10:
+                raise ValueError("Test set too small. Need at least 10 test points.")
+            
+            # Train model on training data only
+            temp_model = self.create_model()
+            temp_model = self.add_external_regressors(temp_model, train_data)
+            temp_model.fit(train_data)
+            
+            # Generate predictions for test period
+            test_periods = len(test_data)
+            future = temp_model.make_future_dataframe(periods=test_periods)
+            
+            # Add external regressors for future periods if needed
+            regressors_needed = [col for col in ['is_weekend', 'is_holiday'] if col in train_data.columns]
+            if regressors_needed:
+                future = self._add_future_regressors(future, test_data)
+            
+            forecast = temp_model.predict(future)
+            
+            # Extract test period predictions
+            train_end_date = train_data['ds'].max()
+            test_forecast = forecast[forecast['ds'] > train_end_date].copy()
+            
+            # Align test predictions with actual test data
+            test_comparison = pd.merge(
+                test_data[['ds', 'y']].rename(columns={'y': 'actual'}),
+                test_forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].rename(columns={'yhat': 'predicted'}),
+                on='ds',
+                how='inner'
+            )
+            
+            if len(test_comparison) == 0:
+                raise ValueError("No matching dates between test data and predictions")
+            
+            # Calculate performance metrics
+            actual = test_comparison['actual'].values
+            predicted = test_comparison['predicted'].values
+            
+            # Handle edge cases
+            actual_nonzero = actual[actual != 0]
+            predicted_nonzero = predicted[actual != 0]
+            
+            # Calculate metrics
+            mae = np.mean(np.abs(actual - predicted))
+            rmse = np.sqrt(np.mean((actual - predicted) ** 2))
+            
+            # MAPE calculation (handle division by zero)
+            if len(actual_nonzero) > 0:
+                mape = np.mean(np.abs((actual_nonzero - predicted_nonzero) / actual_nonzero)) * 100
+            else:
+                mape = float('inf')  # All actuals are zero
+            
+            # Mean Absolute Scaled Error (MASE) - using naive forecast as baseline
+            if len(train_data) > 1:
+                naive_mae = np.mean(np.abs(np.diff(train_data['y'].values)))
+                mase = mae / naive_mae if naive_mae > 0 else float('inf')
+            else:
+                mase = float('inf')
+            
+            # Additional metrics
+            mean_actual = np.mean(actual)
+            mean_predicted = np.mean(predicted)
+            bias = mean_predicted - mean_actual
+            bias_percent = (bias / mean_actual * 100) if mean_actual != 0 else float('inf')
+            
+            # Coverage metrics for confidence intervals
+            in_upper = (actual <= test_comparison['yhat_upper'].values).sum()
+            in_lower = (actual >= test_comparison['yhat_lower'].values).sum()
+            in_interval = ((actual >= test_comparison['yhat_lower'].values) & 
+                          (actual <= test_comparison['yhat_upper'].values)).sum()
+            coverage = in_interval / len(actual) * 100
+            
+            # Compile results
+            evaluation_results = {
+                "status": "success",
+                "evaluation_timestamp": datetime.now().isoformat(),
+                "data_split": {
+                    "total_points": total_points,
+                    "train_points": len(train_data),
+                    "test_points": len(test_data),
+                    "train_ratio_actual": len(train_data) / total_points,
+                    "test_ratio_actual": len(test_data) / total_points,
+                    "train_period": f"{train_data['ds'].min().date()} to {train_data['ds'].max().date()}",
+                    "test_period": f"{test_data['ds'].min().date()} to {test_data['ds'].max().date()}"
+                },
+                "test_metrics": {
+                    "mae": float(mae),
+                    "rmse": float(rmse),
+                    "mape": float(mape) if mape != float('inf') else None,
+                    "mase": float(mase) if mase != float('inf') else None,
+                    "bias": float(bias),
+                    "bias_percent": float(bias_percent) if bias_percent != float('inf') else None,
+                    "coverage_percent": float(coverage)
+                },
+                "data_summary": {
+                    "mean_actual": float(mean_actual),
+                    "mean_predicted": float(mean_predicted),
+                    "actual_std": float(np.std(actual)),
+                    "predicted_std": float(np.std(predicted)),
+                    "zero_actual_days": int((actual == 0).sum()),
+                    "zero_predicted_days": int((predicted == 0).sum())
+                },
+                "detailed_comparison": test_comparison.to_dict('records')[:10]  # First 10 for space
+            }
+            
+            # Add performance interpretation
+            interpretation = []
+            if mape is not None and mape != float('inf'):
+                if mape < 10:
+                    interpretation.append("🟢 Excellent accuracy (MAPE < 10%)")
+                elif mape < 20:
+                    interpretation.append("🟡 Good accuracy (MAPE 10-20%)")
+                elif mape < 50:
+                    interpretation.append("🟠 Fair accuracy (MAPE 20-50%)")
+                else:
+                    interpretation.append("🔴 Poor accuracy (MAPE > 50%)")
+            
+            if coverage < 80:
+                interpretation.append("⚠️ Low confidence interval coverage - model may be overconfident")
+            elif coverage > 95:
+                interpretation.append("⚠️ High confidence interval coverage - model may be underconfident")
+            else:
+                interpretation.append("✅ Good confidence interval coverage")
+            
+            if abs(bias_percent) > 10 and bias_percent != float('inf'):
+                bias_direction = "over-predicting" if bias > 0 else "under-predicting"
+                interpretation.append(f"⚠️ Significant bias detected: {bias_direction} by {abs(bias_percent):.1f}%")
+            
+            evaluation_results["interpretation"] = interpretation
+            
+            logger.info(f"Train/test split evaluation completed - MAPE: {mape:.2f}%, RMSE: {rmse:.2f}")
+            
+            return evaluation_results
+            
+        except Exception as e:
+            logger.error(f"Error in train/test split evaluation: {str(e)}")
+            return {
+                "status": "error",
+                "message": str(e),
+                "evaluation_timestamp": datetime.now().isoformat()
+            }
     
-def process_and_describe_data(data: pd.DataFrame, min_days: int = 30, max_zero_ratio: float = 0.8) -> pd.DataFrame:
-    """
-    Clean data, remove outliers, and remove products with insufficient days or too many zero-demand days.
-    """
-    # Remove missing values
-    data = data.dropna(subset=['ds', 'y', 'product_id'])
-    data['ds'] = pd.to_datetime(data['ds'])
-    # Remove outliers in y using IQR
-    Q1 = data['y'].quantile(0.25)
-    Q3 = data['y'].quantile(0.75)
-    IQR = Q3 - Q1
-    lower = Q1 - 1.5 * IQR
-    upper = Q3 + 1.5 * IQR
-    before = len(data)
-    data = data[(data['y'] >= lower) & (data['y'] <= upper)]
-    after = len(data)
-    print(f"Removed {before - after} outlier rows from y column.")
-    # Remove products with insufficient days
-    counts = data.groupby('product_id')['ds'].nunique()
-    valid_products = counts[counts >= min_days].index
-    filtered_data = data[data['product_id'].isin(valid_products)]
-    # Remove products with too many zero-demand days
-    zero_ratio = filtered_data.groupby('product_id')['y'].apply(lambda x: (x == 0).sum() / len(x))
-    valid_products = zero_ratio[zero_ratio <= max_zero_ratio].index
-    filtered_data = filtered_data[filtered_data['product_id'].isin(valid_products)]
-    print(f"Removed products with more than {int(max_zero_ratio*100)}% zero-demand days. Remaining products: {len(valid_products)}")
-    print("\nDataset description (filtered, outliers removed):")
-    print(filtered_data.describe(include='all'))
-    print(f"Number of products with at least {min_days} days and <= {int(max_zero_ratio*100)}% zero days: {len(valid_products)}")
-    print("Sample product counts:")
-    print(counts[counts >= min_days].head())
-    return filtered_data
-
-def quick_forecast_from_database() -> Dict:
-  
-    logger.info("Quick forecast from database data")
+    def _add_future_regressors(self, future_df: pd.DataFrame, reference_data: pd.DataFrame) -> pd.DataFrame:
+        """Helper method to add external regressors to future dataframe"""
+        # Add is_weekend
+        if 'is_weekend' in reference_data.columns:
+            future_df['is_weekend'] = (future_df['ds'].dt.dayofweek >= 5).astype(int)
+        
+        # Add is_holiday
+        if 'is_holiday' in reference_data.columns:
+            from pandas.tseries.holiday import AbstractHolidayCalendar, Holiday
+            class SLHolidayCalendar(AbstractHolidayCalendar):
+                rules = [
+                    Holiday('New Year', month=4, day=14),
+                    Holiday('Independence Day', month=2, day=4),
+                    Holiday('Valentine Day', month=2, day=14),
+                    Holiday('Christmas', month=12, day=25),
+                ]
+            holidays = SLHolidayCalendar().holidays(
+                start=future_df['ds'].min(), 
+                end=future_df['ds'].max()
+            )
+            future_df['is_holiday'] = future_df['ds'].dt.normalize().isin(holidays).astype(int)
+        
+        return future_df
     
-    try:
-        # Load processed WMS data
-        processed_dir = Path(PROCESSED_DIR)
-        wms_file = processed_dir / "daily_demand_by_product_modern.csv"
+# ============================================================================
+# UNIFIED TRAINING & EVALUATION SYSTEM
+# ============================================================================
 
-        if not wms_file.exists():
-            raise FileNotFoundError(f"WMS data not found at {wms_file}")
+class ProphetTrainingSystem:
+    """Unified system for training and evaluating Prophet models with proper metrics"""
+    
+    def __init__(self, data_path: str = None):
+        if data_path is None:
+            # Default path relative to the forecaster location
+            self.data_path = Path(__file__).parent.parent.parent / "data" / "processed" / "daily_demand_by_product_modern.csv"
+        else:
+            self.data_path = Path(data_path)
+        
+        self.models_path = Path(__file__).parent.parent.parent / "data" / "models"
+        
+    def load_data(self) -> pd.DataFrame:
+        """Load training data"""
+        if not self.data_path.exists():
+            print(f"❌ Data file not found: {self.data_path}")
+            print("💡 Generate data first or check the path")
+            return None
+        
+        df = pd.read_csv(self.data_path)
+        df['ds'] = pd.to_datetime(df['ds'])
+        print(f"✅ Loaded {len(df):,} records for {df['product_id'].nunique()} products")
+        return df
+    
+    def train_and_evaluate_single_product(self, product_id: str, train_ratio: float = 0.8) -> dict:
+        """Train and evaluate a Prophet model for a single product with proper train/test split"""
+        print(f"\n🚀 Training & Evaluating {product_id} with {train_ratio:.0%}/{1-train_ratio:.0%} split")
         
         # Load data
-        data = pd.read_csv(wms_file)
+        df = self.load_data()
+        if df is None:
+            return {"status": "error", "message": "Data not available"}
         
-        # Process and describe data
-        data = process_and_describe_data(data, min_days=30)
-        logger.info(f"Loaded {len(data)} records from WMS database after filtering")
+        # Filter for this product
+        product_data = df[df['product_id'] == product_id].copy()
+        if product_data.empty:
+            return {"status": "error", "message": f"No data found for {product_id}"}
         
-        # Get top products by volume
-        top_products = data.groupby('product_id')['y'].sum().nlargest(5).index
+        print(f"📊 Found {len(product_data)} data points from {product_data['ds'].min().date()} to {product_data['ds'].max().date()}")
+        
+        # Use the existing evaluate_with_train_test_split method
+        forecaster = ProphetForecaster(product_id=product_id)
+        result = forecaster.evaluate_with_train_test_split(
+            data=product_data,
+            train_ratio=train_ratio,
+            test_ratio=1-train_ratio,
+            target_column='y'
+        )
+        
+        if result["status"] == "success":
+            metrics = result["test_metrics"]
+            print(f"\n📊 EVALUATION RESULTS:")
+            print(f"   MAPE: {metrics['mape']:.2f}% (lower is better)")
+            print(f"   RMSE: {metrics['rmse']:.2f} (lower is better)")
+            print(f"   MAE: {metrics['mae']:.2f} (lower is better)")
+            print(f"   R²: {metrics.get('r2_score', 'N/A')} (higher is better)")
+            print(f"   Coverage: {metrics['coverage_percent']:.1f}% (should be ~95%)")
+            
+            # Show interpretation
+            for insight in result.get("interpretation", []):
+                print(f"   {insight}")
+            
+            return result
+        else:
+            print(f"❌ Evaluation failed: {result.get('message', 'Unknown error')}")
+            return result
+    
+    def evaluate_multiple_products(self, product_ids: list, train_ratio: float = 0.8) -> dict:
+        """Evaluate multiple products and provide comprehensive summary"""
+        print(f"\n🔍 Training & Evaluating {len(product_ids)} products")
+        print("=" * 70)
         
         results = {}
+        successful = 0
+        all_metrics = []
         
-        for product_id in top_products:
-            logger.info(f"Forecasting for product: {product_id}")
-            # Create forecaster for this product
-            forecaster = ProphetForecaster(product_id=str(product_id))
-            # Train model
-            cv_results = forecaster.train(data)
-            # Save the training dataframe used for this product
-            training_df = forecaster.training_data.copy()
-            # Generate forecast
-            forecast = forecaster.predict(periods=90)
-            # Save each day's forecast to the database
-            for _, row in forecast.iterrows():
-                InventoryService.save_demand_forecast(
-                    product_id=str(product_id),
-                    date=row['ds'],
-                    predicted_demand=row['yhat']
-                )
-            # Get summary
-            summary = forecaster.get_forecast_summary()
-            # Save model
-            model_path = forecaster.save_model()
-            results[product_id] = {
-                'forecast': forecast,
-                'summary': summary,
-                'cv_results': cv_results,
-                'model_path': model_path,
-                'training_data': training_df  # <-- Added here
-            }
-            logger.info(f"Forecast completed for {product_id}")
-            forecaster.plot_forecast(forecast)
-            forecaster.plot_components(forecast)
+        for i, product_id in enumerate(product_ids, 1):
+            print(f"\n[{i}/{len(product_ids)}] Processing {product_id}")
+            result = self.train_and_evaluate_single_product(product_id, train_ratio)
+            
+            if result["status"] == "success":
+                results[product_id] = result
+                all_metrics.append(result["test_metrics"])
+                successful += 1
         
-        logger.info(f"Completed forecasts for {len(results)} products")
+        print(f"\n📈 SUMMARY: {successful}/{len(product_ids)} successful evaluations")
+        
+        if successful > 0:
+            self._generate_comprehensive_report(all_metrics, results)
+        
         return results
+    
+    def _generate_comprehensive_report(self, all_metrics: list, results: dict):
+        """Generate comprehensive evaluation report with statistics"""
+        print("\n" + "="*80)
+        print("📊 PROPHET MODEL EVALUATION REPORT")
+        print("="*80)
         
-    except Exception as e:
-        logger.error(f" Quick forecast failed: {e}")
-        return {'error': str(e)}
+        # Calculate aggregate statistics
+        mape_values = [m["mape"] for m in all_metrics if m["mape"] is not None]
+        rmse_values = [m["rmse"] for m in all_metrics]
+        mae_values = [m["mae"] for m in all_metrics]
+        coverage_values = [m["coverage_percent"] for m in all_metrics]
+        
+        print(f"📈 Models Evaluated: {len(all_metrics)}")
+        print(f"📊 MAPE: {np.mean(mape_values):.2f}% ± {np.std(mape_values):.2f} (range: {np.min(mape_values):.2f}%-{np.max(mape_values):.2f}%)")
+        print(f"📊 RMSE: {np.mean(rmse_values):.2f} ± {np.std(rmse_values):.2f} (range: {np.min(rmse_values):.2f}-{np.max(rmse_values):.2f})")
+        print(f"📊 MAE: {np.mean(mae_values):.2f} ± {np.std(mae_values):.2f} (range: {np.min(mae_values):.2f}-{np.max(mae_values):.2f})")
+        print(f"📊 Coverage: {np.mean(coverage_values):.1f}% ± {np.std(coverage_values):.1f} (range: {np.min(coverage_values):.1f}%-{np.max(coverage_values):.1f}%)")
+        
+        # Model quality distribution based on MAPE
+        print("\n🎯 Model Quality Distribution (based on MAPE):")
+        excellent = len([m for m in mape_values if m <= 10])
+        good = len([m for m in mape_values if 10 < m <= 20])
+        fair = len([m for m in mape_values if 20 < m <= 50])
+        poor = len([m for m in mape_values if m > 50])
+        
+        total = len(mape_values)
+        print(f"   🎯 Excellent (≤10%): {excellent}/{total} ({excellent/total*100:.1f}%)")
+        print(f"   ✅ Good (10-20%): {good}/{total} ({good/total*100:.1f}%)")
+        print(f"   ⚠️ Fair (20-50%): {fair}/{total} ({fair/total*100:.1f}%)")
+        print(f"   ❌ Poor (>50%): {poor}/{total} ({poor/total*100:.1f}%)")
+        
+        # Best and worst performing models
+        print("\n🏆 Best Performing Models:")
+        sorted_results = sorted(results.items(), key=lambda x: x[1]["test_metrics"]["mape"])
+        for i, (product_id, result) in enumerate(sorted_results[:3], 1):
+            mape = result["test_metrics"]["mape"]
+            rmse = result["test_metrics"]["rmse"]
+            print(f"   {i}. {product_id}: MAPE {mape:.2f}%, RMSE {rmse:.2f}")
+        
+        if len(sorted_results) > 3:
+            print("\n⚠️ Worst Performing Models:")
+            for i, (product_id, result) in enumerate(sorted_results[-3:], 1):
+                mape = result["test_metrics"]["mape"]
+                rmse = result["test_metrics"]["rmse"]
+                print(f"   {i}. {product_id}: MAPE {mape:.2f}%, RMSE {rmse:.2f}")
+        
+        # Overall assessment
+        print("\n💡 Overall Assessment:")
+        avg_mape = np.mean(mape_values)
+        avg_coverage = np.mean(coverage_values)
+        
+        if avg_mape <= 15 and avg_coverage >= 80:
+            print("   🎉 EXCELLENT: Models are ready for production deployment!")
+            print("   ✅ High accuracy and reliable uncertainty estimation")
+        elif avg_mape <= 25 and avg_coverage >= 70:
+            print("   ✅ GOOD: Models show solid performance")
+            print("   💡 Consider fine-tuning for improved accuracy")
+        elif avg_mape <= 40:
+            print("   ⚠️ FAIR: Models have acceptable performance")
+            print("   🔧 Recommend feature engineering and hyperparameter tuning")
+        else:
+            print("   ❌ POOR: Models need significant improvement")
+            print("   🔧 Consider data quality issues, feature engineering, or alternative approaches")
+        
+        # Specific recommendations
+        print("\n🔧 Specific Recommendations:")
+        if avg_mape > 25:
+            print("   • High prediction errors detected - review data quality and outliers")
+        if avg_coverage < 80:
+            print("   • Uncertainty estimation needs improvement - consider wider prediction intervals")
+        if np.std(mape_values) > 15:
+            print("   • High variance in model performance - investigate product-specific patterns")
+        
+        print("="*80)
+    
+    def sample_and_evaluate(self, sample_size: int = 5, min_data_points: int = 100, train_ratio: float = 0.8):
+        """Sample random products and evaluate them"""
+        df = self.load_data()
+        if df is None:
+            return None
+        
+        # Find products with sufficient data
+        product_counts = df.groupby('product_id').size()
+        suitable_products = product_counts[product_counts >= min_data_points].index.tolist()
+        
+        if len(suitable_products) < sample_size:
+            selected_products = suitable_products
+            print(f"⚠️ Only {len(suitable_products)} products have ≥{min_data_points} data points")
+        else:
+            selected_products = np.random.choice(suitable_products, sample_size, replace=False).tolist()
+        
+        print(f"🎯 Selected {len(selected_products)} products for evaluation:")
+        for i, product in enumerate(selected_products, 1):
+            product_count = product_counts[product]
+            print(f"   {i}. {product} ({product_count} data points)")
+        
+        return self.evaluate_multiple_products(selected_products, train_ratio)
 
+# ============================================================================
+# COMMAND LINE INTERFACE FOR TRAINING & EVALUATION
+# ============================================================================
 
-def forecast_for_product_and_range(data: pd.DataFrame, product_id: str, start_date: str, end_date: str, model_config: Dict = None) -> pd.DataFrame:
-    """
-    Forecast demand for a specific product and date range, using a cached model if it's less than 24 hours old.
-    Args:
-        data: DataFrame with columns ['ds', 'y', 'product_id']
-        product_id: Product to forecast
-        start_date: Forecast start date (YYYY-MM-DD)
-        end_date: Forecast end date (YYYY-MM-DD)
-        model_config: Optional Prophet config
-    Returns:
-        Forecast DataFrame for the requested range
-    """
-    import os
-    from datetime import datetime, timedelta
-    from pathlib import Path
-    models_dir = Path(MODELS_DIR)
-    model_files = list(models_dir.glob(f"prophet_model_{product_id}_*.pkl"))
-    forecaster = ProphetForecaster(model_config=model_config, product_id=product_id)
-    model_loaded = False
-    if model_files:
-        # Use the most recent model
-        model_files.sort(reverse=True)
-        model_path = model_files[0]
-        mtime = datetime.fromtimestamp(os.path.getmtime(model_path))
-        if datetime.now() - mtime < timedelta(hours=24):
-            try:
-                with open(model_path, 'rb') as f:
-                    model_data = pickle.load(f)
-                forecaster.model = model_data['model']
-                forecaster.model_config = model_data['config']
-                forecaster.product_id = model_data['product_id']
-                forecaster.is_trained = model_data['is_trained']
-                model_loaded = True
-                logger.info(f"Loaded cached model for product {product_id} from {model_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load cached model, will retrain: {e}")
-    if not model_loaded:
-        logger.info(f"No valid cached model for product {product_id}, training new model.")
-        forecaster.train(data)
-        forecaster.save_model()
-    # Prepare future dataframe for the requested date range
-    start_dt = pd.to_datetime(start_date)
-    end_dt = pd.to_datetime(end_date)
-    periods = (end_dt - start_dt).days + 1
-    forecast = forecaster.predict(periods=periods, include_history=True)
-    forecast_range = forecast[(forecast['ds'] >= start_dt) & (forecast['ds'] <= end_dt)]
-    return forecast_range
+def main():
+    """Command line interface for Prophet training and evaluation"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Prophet Model Training & Evaluation System")
+    
+    # Training/evaluation operations
+    parser.add_argument("--product", help="Specific product ID to train/evaluate")
+    parser.add_argument("--products", help="Comma-separated list of product IDs")
+    parser.add_argument("--sample", type=int, default=5, help="Number of random products to sample")
+    parser.add_argument("--min-data-points", type=int, default=100, help="Minimum data points required")
+    
+    # Parameters
+    parser.add_argument("--train-ratio", type=float, default=0.8, help="Training data ratio (0.8 = 80%)")
+    parser.add_argument("--data-path", help="Path to the data file")
+    
+    # Demo
+    parser.add_argument("--demo", action="store_true", help="Run demo with sample products")
+    
+    args = parser.parse_args()
+    
+    # Initialize training system
+    trainer = ProphetTrainingSystem(data_path=args.data_path)
+    
+    print("🚀 Prophet Model Training & Evaluation System")
+    print("=" * 60)
+    
+    if args.demo:
+        print("🎭 Running demo with sample products...")
+        trainer.sample_and_evaluate(sample_size=3, train_ratio=args.train_ratio)
+        
+    elif args.product:
+        # Single product
+        trainer.train_and_evaluate_single_product(args.product, args.train_ratio)
+        
+    elif args.products:
+        # Multiple specific products
+        product_list = [p.strip() for p in args.products.split(',')]
+        trainer.evaluate_multiple_products(product_list, args.train_ratio)
+        
+    else:
+        # Sample random products
+        trainer.sample_and_evaluate(
+            sample_size=args.sample, 
+            min_data_points=args.min_data_points,
+            train_ratio=args.train_ratio
+        )
+    
+    print("\n🎉 Evaluation completed!")
 
 if __name__ == "__main__":
-
-    print("Prophet Forecaster")
-
-    
-    # if not PROPHET_AVAILABLE:
-    #     print("Prophet not installed. Run: pip install prophet")
-    #     exit(1)
-    #check for product ids
-    
-    print(df['product_id'].astype(str).unique())
-    print('10023' in df['product_id'].astype(str).unique())
-    
-    
-    # Run quick forecast from database
-    results = quick_forecast_from_database()
-    # Plot monthly and yearly demand for each top product
-    if 'error' not in results:
-        for product_id, result in results.items():
-            print(f"\nPlotting monthly/yearly demand for product {product_id}...")
-            plot_demand_by_month_and_year(result['training_data'], product_id=product_id)
-            # Plot demand for each year and each month in that year
-            training_data = result['training_data']
-            years = training_data['ds'].dt.year.unique()
-            for year in years:
-                print(f"Plotting demand for product {product_id} in year {year}...")
-                plot_demand_by_month_year(training_data, product_id=product_id, year=year)
-                months = training_data[training_data['ds'].dt.year == year]['ds'].dt.month.unique()
-                for month in months:
-                    print(f"Plotting demand for product {product_id} in {year}-{month:02d}...")
-                    plot_demand_by_month_year(training_data, product_id=product_id, year=year, month=month)
+    import sys
+    if len(sys.argv) > 1:
+        main()
     else:
-        print(f"Error: {results['error']}")
-    
-    # Predict for a specific product and date range
-
-    example_product_id = 'PROD_2022_BOOK_0000' #one product 
-
-    if example_product_id:
-        start_date = '2025-08-01'
-        end_date = '2025-08-31'
-        print(f"\nForecast for product {example_product_id} from {start_date} to {end_date}:")
-        forecast_df = forecast_for_product_and_range(df, product_id=example_product_id, start_date=start_date, end_date=end_date)
-        print(forecast_df[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
-    else:
-        print("No product found for example forecast.")
+        # Demo mode
+        print("🎭 Running Prophet evaluation demo...")
+        trainer = ProphetTrainingSystem()
+        trainer.sample_and_evaluate(sample_size=2, train_ratio=0.8)
 

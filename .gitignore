@@ -5,6 +5,9 @@ env/
 .env/
 ENV/
 abs/
+IMPLEMENTATION_SUMMARY.md
+IMPLEMENTATION_GUIDE.md
+quickstart.py
 
 # Environment variables
 .env
@@ -84,30 +87,33 @@ tmp/
 generated/
 
 # Data files - exclude large datasets
-*.csv
+# *.csv
 *.json
 *.parquet
 *.xlsx
 *.xls
 
 # AI Services data directories
-ai-services/*/data/
-ai-services/*/datasets/
-ai-services/*/models/
+#ai-services/*/data/
+#ai-services/*/datasets/
+#ai-services/*/models/
 ai-services/*/cache/
 ai-services/chatbot/data/
 ai-services/chatbot/chroma_db/
 
 # Large dataset files specifically
-**/data/processed/
+# **/data/processed/
 **/data/datasets/
 **/data/raw/
 **/brazilian-ecommerce/
 **/retail-transactions/
 
 # Model files
-*.pkl
+#*.pkl
 *.joblib
 *.h5
 *.pb
 *.bin
+
+test_*.py
+

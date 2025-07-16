@@ -90,12 +90,12 @@ def load_ml_services():
         return None
 
 # Load the services
-allocation_service = load_ml_services()
+# allocation_service = load_ml_services()
 
-if allocation_service:
-    print("✅ ML services loaded successfully via importlib")
-else:
-    print("⚠️ ML services not available - using fallback")
+# if allocation_service:
+#     print("✅ ML services loaded successfully via importlib")
+# else:
+#     print("⚠️ ML services not available - using fallback")
 
 router = APIRouter()
 

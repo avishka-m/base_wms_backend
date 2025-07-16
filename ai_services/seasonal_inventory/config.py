@@ -10,22 +10,18 @@ from ...config.base import (
 load_dotenv()
 
 
-# AI SERVICES PROJECT INFORMATION
+
 
 PROJECT_NAME = "Seasonal Inventory Prediction"
 PROJECT_DESCRIPTION = "AI-powered seasonal inventory forecasting using Facebook Prophet"
 
-# =============================================================================
-# AI-SPECIFIC API CONFIGURATION  
-# =============================================================================
+
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8003"))
 API_PREFIX = "/api/v1"
 API_TITLE = "Seasonal Inventory API"
 
-# =============================================================================
-# AI-SPECIFIC DATABASE CONFIGURATION
-# =============================================================================
+
 # Database URLs inherited from base config
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
@@ -33,9 +29,6 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 WMS_API_TIMEOUT = 30
 
-# # =============================================================================
-# # EXTERNAL API KEYS
-# # =============================================================================
 
 # # Kaggle API
 # KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
@@ -243,9 +236,7 @@ PLOT_CONFIG = {
     "save_format": "png"
 }
 
-# =============================================================================
-# CACHING AND PERFORMANCE
-# =============================================================================
+
 
 # Caching Configuration
 CACHE_CONFIG = {
@@ -328,9 +319,7 @@ ALERT_CONFIG = {
 }
 
 
-# =============================================================================
-# AI-SPECIFIC ENVIRONMENT SETTINGS
-# =============================================================================
+
 ENVIRONMENT = BASE_ENVIRONMENT  # Inherit from base config
 
 if ENVIRONMENT == "production":

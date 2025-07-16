@@ -100,11 +100,11 @@ ai_services/*/models/
 ai_services/*/cache/
 ai_services/chatbot/data/
 ai_services/chatbot/chroma_db/
-ai_services/seasonal_inventory/data/
-ai_services/forecasting/data/
+ai_services/seasonal_inventory/data/models_backup_20250714_120323
+# ai_services/forecasting/data/
 **/models_backup*/
-**/data/models/
-**/models/
+# **/data/models/
+# **/models/
 
 # Large dataset files specifically
 **/data/processed/

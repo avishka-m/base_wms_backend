@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import logging
 
-from ..auth.dependencies import has_role
+from ..auth.dependencies import get_current_active_user, has_role
 from ..services.prophet_forecasting_service import get_prophet_forecasting_service
 
 router = APIRouter()
@@ -14,23 +14,19 @@ logger = logging.getLogger(__name__)
 
 # Simple request models for frontend
 class ForecastRequest(BaseModel):
-    """Simple forecast request"""
+
     product_id: str = Field(..., description="Product ID to forecast")
     days: int = Field(30, ge=1, le=365, description="Forecast horizon (1-365 days)")
     confidence: float = Field(0.95, ge=0.80, le=0.99, description="Confidence level")
 
 class RecommendationRequest(BaseModel):
-    """Inventory recommendation request"""
+    
     product_ids: List[str] = Field(..., description="List of product IDs")
     days_ahead: int = Field(30, ge=7, le=90, description="Planning horizon (7-90 days)")
 
-# ============================================================================
-# ESSENTIAL ENDPOINTS FOR FRONTEND USE
-# ============================================================================
 
 @router.get("/health")
 async def health_check():
-    """🩺 Health check for Prophet forecasting service"""
     try:
         service = get_prophet_forecasting_service()
         status = service.get_service_status()
@@ -52,7 +48,7 @@ async def health_check():
 
 @router.get("/products")
 async def get_available_products():
-    """📦 Get list of products available for forecasting"""
+    
     try:
         service = get_prophet_forecasting_service()
         result = service.get_available_products()
@@ -72,12 +68,11 @@ async def get_available_products():
         raise HTTPException(status_code=500, detail=f"Failed to get products: {str(e)}")
 
 @router.post("/forecast")
-@has_role(["Manager", "Analyst"])
 async def generate_forecast(
     request: ForecastRequest,
-    current_user: dict = Depends(has_role(["Manager", "Analyst"]))
+    current_user: Dict[str, Any] = Depends(has_role(["Manager", "Analyst"]))
 ):
-    """📈 Generate Prophet forecast for a single product"""
+
     try:
         service = get_prophet_forecasting_service()
         
@@ -104,12 +99,11 @@ async def generate_forecast(
         raise HTTPException(status_code=500, detail=f"Forecast failed: {str(e)}")
 
 @router.post("/recommendations")
-@has_role(["Manager", "Analyst"])
 async def get_inventory_recommendations(
     request: RecommendationRequest,
-    current_user: dict = Depends(has_role(["Manager", "Analyst"]))
+    current_user: Dict[str, Any] = Depends(has_role(["Manager", "Analyst"]))
 ):
-    """🎯 Get inventory recommendations for multiple products"""
+    
     try:
         service = get_prophet_forecasting_service()
         
@@ -136,7 +130,7 @@ async def get_inventory_recommendations(
 
 @router.get("/status")
 async def get_service_status():
-    """📊 Get basic Prophet service and model status"""
+    
     try:
         service = get_prophet_forecasting_service()
         
@@ -159,25 +153,4 @@ async def get_service_status():
         logger.error(f"Status check error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
-# ============================================================================
-# ADMINISTRATIVE NOTE
-# ============================================================================
-"""
-🚨 REMOVED ENDPOINTS (Use Command Line Instead):
 
-❌ POST /test/forecast          → Use: python -c "from app.services... import test"
-❌ POST /forecast/batch         → Use: python simple_batch_train.py --products LIST
-❌ POST /forecast/custom-range  → Merged into main /forecast endpoint
-❌ POST /models/train           → Use: python simple_batch_train.py --product ID
-❌ GET  /models/training-status → Use: python check_products.py --status
-❌ GET  /products/all          → Duplicate of /products (removed)
-❌ POST /models/evaluate        → Use: python evaluate_models_with_split.py
-❌ POST /models/retrain-with-split → Use: python evaluate_models_with_split.py --retrain
-
-💡 Why This Is Better:
-   • APIs for user-facing features only
-   • CLI tools for admin/development tasks
-   • Simpler codebase and maintenance
-   • Better separation of concerns
-   • No authentication issues for backend tasks
-"""

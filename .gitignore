@@ -4,6 +4,10 @@ env/
 .venv/
 .env/
 ENV/
+abs/
+IMPLEMENTATION_SUMMARY.md
+IMPLEMENTATION_GUIDE.md
+quickstart.py
 
 # Environment variables
 .env
@@ -89,13 +93,18 @@ generated/
 *.xlsx
 *.xls
 
-# AI Services data directories
-ai-services/*/data/
-ai-services/*/datasets/
-ai-services/*/models/
-ai-services/*/cache/
-ai-services/chatbot/data/
-ai-services/chatbot/chroma_db/
+# AI Services data directories - comprehensive patterns
+ai_services/*/data/
+ai_services/*/datasets/
+ai_services/*/models/
+ai_services/*/cache/
+ai_services/chatbot/data/
+ai_services/chatbot/chroma_db/
+ai_services/seasonal_inventory/data/models_backup_20250714_120323
+# ai_services/forecasting/data/
+**/models_backup*/
+# **/data/models/
+# **/models/
 
 # Large dataset files specifically
 **/data/processed/
@@ -103,6 +112,7 @@ ai-services/chatbot/chroma_db/
 **/data/raw/
 **/brazilian-ecommerce/
 **/retail-transactions/
+**/training/model_train/
 
 setupRK.txt
 
@@ -112,3 +122,20 @@ setupRK.txt
 *.h5
 *.pb
 *.bin
+
+# Large image files from training
+*.png
+*.jpg
+*.jpeg
+
+# Training directory and all subdirectories
+training/
+**/training/
+ai_services/**/training/
+
+# Individual model directories
+**/individual_models/
+**/production_models/
+**/trained_models/
+
+test_*.py

@@ -14,7 +14,7 @@ from .shipping import router as shipping_router
 from .returns import router as returns_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
-from .predictions import router as predictions_router
+from .prophet_forecasting_simple import router as prophet_router
 from .workflow import router as workflow_router
 from .role_based_orders import router as role_based_router
 from .chatbot import router as chatbot_router  # Enhanced chatbot with persistent storage
@@ -49,20 +49,22 @@ api_router.include_router(shipping_router, prefix="/shipping", tags=["Shipping"]
 api_router.include_router(returns_router, prefix="/returns", tags=["Returns"])
 api_router.include_router(vehicles_router, prefix="/vehicles", tags=["Vehicles"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
-api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])
+
+# api_router.include_router(prophet_router, prefix="/prophet", tags=["Prophet Forecasting"])
+
 api_router.include_router(role_based_router, prefix="/role-based", tags=["Role-Based Operations"])
 api_router.include_router(workflow_router, prefix="/workflow", tags=["Workflow Management"])
 
-api_router.include_router(storage_history_router, prefix="/storage-history", tags=["Storage History"])
-api_router.include_router(seed_data_router, prefix="/seed-data", tags=["Seed Data"])
-api_router.include_router(inventory_increases_router, prefix="/inventory-increases", tags=["Inventory Increases"])
-api_router.include_router(location_inventory_router, prefix="/location-inventory", tags=["Location Inventory"])
-api_router.include_router(ai_router, prefix="/ai", tags=["AI/ML Predictions"])
+# api_router.include_router(storage_history_router, prefix="/storage-history", tags=["Storage History"])
+# api_router.include_router(seed_data_router, prefix="/seed-data", tags=["Seed Data"])
+# api_router.include_router(inventory_increases_router, prefix="/inventory-increases", tags=["Inventory Increases"])
+# api_router.include_router(location_inventory_router, prefix="/location-inventory", tags=["Location Inventory"])
+# api_router.include_router(ai_router, prefix="/ai", tags=["AI/ML Predictions"])
 
 api_router.include_router(chatbot_router, prefix="/chatbot", tags=["AI Chatbot"])  # Enhanced chatbot with persistent storage
 
 api_router.include_router(websocket_router, tags=["WebSocket"])  # Real-time updates
 api_router.include_router(websocket_admin_router, prefix="/admin", tags=["WebSocket Admin"])  # WebSocket administration
-api_router.include_router(anomaly_detection_router, prefix="/anomaly-detection", tags=["Anomaly Detection"])  # Beginner-friendly anomaly detection
+# api_router.include_router(anomaly_detection_router, prefix="/anomaly-detection", tags=["Anomaly Detection"])  # Beginner-friendly anomaly detection
 
 

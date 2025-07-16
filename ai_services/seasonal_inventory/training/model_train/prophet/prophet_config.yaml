@@ -1,0 +1,67 @@
+categories:
+  books_media:
+    hyperparameters:
+      changepoint_prior_scale: 0.5
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: additive
+      seasonality_prior_scale: 1.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for books_media category demand forecasting
+  clothing:
+    hyperparameters:
+      changepoint_prior_scale: 1.0
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: additive
+      seasonality_prior_scale: 1.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for clothing category demand forecasting
+  electronics:
+    hyperparameters:
+      changepoint_prior_scale: 1.0
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: additive
+      seasonality_prior_scale: 10.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for electronics category demand forecasting
+  health_beauty:
+    hyperparameters:
+      changepoint_prior_scale: 0.01
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: additive
+      seasonality_prior_scale: 10.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for health_beauty category demand forecasting
+  home_garden:
+    hyperparameters:
+      changepoint_prior_scale: 0.5
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: multiplicative
+      seasonality_prior_scale: 1.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for home_garden category demand forecasting
+  sports_outdoors:
+    hyperparameters:
+      changepoint_prior_scale: 0.1
+      daily_seasonality: false
+      holidays_prior_scale: 10.0
+      seasonality_mode: multiplicative
+      seasonality_prior_scale: 10.0
+      weekly_seasonality: true
+      yearly_seasonality: true
+    notes: Optimized for sports_outdoors category demand forecasting
+model_config:
+  created_date: '2025-01-15'
+  description: Optimized Prophet hyperparameters per category
+  optimization_metric: RMSE
+  prophet_version: 1.1.0
+  validation_method: 80/20 train-validation split

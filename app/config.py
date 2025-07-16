@@ -1,26 +1,30 @@
 import os
 from dotenv import load_dotenv
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config.base import (
+    MONGODB_URL, DATABASE_NAME, API_V1_PREFIX, 
+    PROJECT_NAME as BASE_PROJECT_NAME, PROJECT_VERSION, LOGGING_LEVEL, DEBUG_MODE
+)
 
 # Load environment variables
 load_dotenv()
 
 # Database configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://judithfdo2002:kTCN07mlhHmtgrt0@cluster0.9wwflqj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 
 # API configuration
 API_V1_PREFIX = "/api/v1"
 PROJECT_NAME = "Warehouse Management System"
 PROJECT_DESCRIPTION = "A comprehensive warehouse management system with inventory tracking, order processing, and logistics optimization"
-PROJECT_VERSION = "1.0.0"
 
 # Security configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
-# Application settings
-LOGGING_LEVEL = os.getenv("LOGGING_LEVEL", "INFO")
-DEBUG_MODE = os.getenv("DEBUG_MODE", "False").lower() == "true"
+# Application settings (inherited from base config)
+# LOGGING_LEVEL and DEBUG_MODE are imported from base
 
 # Chatbot configuration
 DEV_MODE = os.getenv("DEV_MODE", "True").lower() == "true"

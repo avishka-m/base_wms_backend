@@ -35,6 +35,11 @@ async def get_inventory_items(
             low_stock=low_stock
         )
         
+        # Convert ObjectId to string for JSON serialization
+        for item in items:
+            if '_id' in item:
+                item['_id'] = str(item['_id'])
+        
         # Add basic pagination metadata
         total_items = len(items) if len(items) < limit else skip + len(items) + 1  # Approximate
         return {

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 from .config import (
@@ -103,9 +103,33 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """
     Handle validation errors with CORS headers.
     """
+    logger.error(f"Validation error on {request.url}: {exc.errors()}")
     response = JSONResponse(
         status_code=422,
         content={"detail": exc.errors(), "body": exc.body}
+    )
+    
+    # Add CORS headers manually
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
+
+# Handle FastAPI response validation errors
+@app.exception_handler(ResponseValidationError)
+async def response_validation_exception_handler(request: Request, exc: ResponseValidationError):
+    """
+    Handle response validation errors with CORS headers.
+    """
+    logger.error(f"Response validation error on {request.url}: {exc.errors()}")
+    response = JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error: Response validation failed",
+            "errors": exc.errors() if hasattr(exc, 'errors') else str(exc)
+        }
     )
     
     # Add CORS headers manually

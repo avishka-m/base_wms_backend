@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+from .conversation_memory_service import ConversationMemoryService
+
 logger = logging.getLogger("wms_chatbot.conversation_service")
 
 
@@ -17,6 +19,9 @@ class ConversationService:
         # Simple in-memory conversation store
         # In production, this should be replaced with a database
         self.user_conversations = {}
+        
+        # Initialize the memory service
+        self.memory_service = ConversationMemoryService()
     
     def create_conversation(
         self, 

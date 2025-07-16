@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Background
 from pymongo import DESCENDING
 
 from app.utils.chatbot.database import db
+
 import logging
 
 from app.models.chatbot.chat_models import (
@@ -991,7 +992,9 @@ async def get_search_analytics(
         user_id = current_user.get("username", "anonymous")
         
         # Get search analytics from database
+
         search_analytics_col = db["chat_search_analytics"]
+
         
         # Date range
         end_date = datetime.utcnow()
@@ -1977,6 +1980,7 @@ async def get_current_user_quick_history(
         )
 
 
+
 @router.post("/logout", response_model=Dict[str, Any])
 async def logout_user(current_user: Dict[str, Any] = Depends(get_optional_current_user)):
     """
@@ -2004,3 +2008,4 @@ async def logout_user(current_user: Dict[str, Any] = Depends(get_optional_curren
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear user session: {str(e)}"
         )
+

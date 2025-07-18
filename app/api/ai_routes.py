@@ -65,7 +65,7 @@ async def predict_optimal_location(
                 detail="ML allocation service is not available"
             )
         
-        # ✨ REAL-TIME ML PREDICTION with current location availability
+        
         allocation_result = await allocation_service.allocate_location_for_item(
             item_id=item_id,
             category=category,
@@ -75,7 +75,8 @@ async def predict_optimal_location(
             db_collection_storage=storage_collection,
             db_collection_location_inventory=location_inventory_collection  # Uses current availability
         )
-        
+        print("🔍 Allocation Result:", allocation_result)
+
         if not allocation_result['success']:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

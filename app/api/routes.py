@@ -24,6 +24,7 @@ from .seed_data import router as seed_data_router
 from .inventory_increases import router as inventory_increases_router
 from .location_inventory import router as location_inventory_router
 from .ai_routes import router as ai_router
+from .worker_location import router as worker_location_router
 
 # Create main API router
 api_router = APIRouter()
@@ -52,3 +53,4 @@ api_router.include_router(seed_data_router, prefix="/seed-data", tags=["Seed Dat
 api_router.include_router(inventory_increases_router, prefix="/inventory-increases", tags=["Inventory Increases"])
 api_router.include_router(location_inventory_router, prefix="/location-inventory", tags=["Location Inventory"])
 api_router.include_router(ai_router, prefix="/ai", tags=["AI/ML Predictions"])
+api_router.include_router(worker_location_router, prefix="/worker-location", tags=["Worker Location"])

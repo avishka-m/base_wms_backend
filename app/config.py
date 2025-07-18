@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://judithfdo2002:kTCN07mlhHmtgrt0@cluster0.9wwflqj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 
 # API configuration

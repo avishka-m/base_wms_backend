@@ -1,4 +1,4 @@
-# ai_services/path_optimization/allocation_service.py - UPDATED WITH LOCATION INVENTORY
+# ai_services/path_optimization/allocation_service.py
 
 from typing import Dict, List, Any, Optional
 from warehouse_mapper import warehouse_mapper
@@ -52,7 +52,7 @@ class LocationAllocationService:
         prefixes = rack_group_prefixes.get(target_rack_group, [])
         if not prefixes:
             print(f"⚠️ Unknown rack group: {target_rack_group}")
-            return available_locations
+            return []
         
         # Filter locations that start with any of the target prefixes
         filtered_locations = []
@@ -63,6 +63,26 @@ class LocationAllocationService:
         
         print(f"✅ Filtered to {len(filtered_locations)} locations in {target_rack_group}")
         return filtered_locations
+    
+    def get_fallback_rack_sequence(self, predicted_rack_group: str) -> List[str]:
+        """Get fallback sequence for rack groups of the same type"""
+        
+        fallback_sequences = {
+            # B Rack fallbacks
+            'B Rack 1': ['B Rack 1', 'B Rack 2', 'B Rack 3'],
+            'B Rack 2': ['B Rack 2', 'B Rack 1', 'B Rack 3'],
+            'B Rack 3': ['B Rack 3', 'B Rack 1', 'B Rack 2'],
+            
+            # P Rack fallbacks
+            'P Rack 1': ['P Rack 1', 'P Rack 2'],
+            'P Rack 2': ['P Rack 2', 'P Rack 1'],
+            
+            # D Rack fallbacks
+            'D Rack 1': ['D Rack 1', 'D Rack 2'],
+            'D Rack 2': ['D Rack 2', 'D Rack 1']
+        }
+        
+        return fallback_sequences.get(predicted_rack_group, [predicted_rack_group])
     
     def select_optimal_location(self, 
                                available_locations: List[str], 
@@ -155,9 +175,9 @@ class LocationAllocationService:
                                        quantity: int,
                                        db_collection_seasonal,
                                        db_collection_storage,
-                                       db_collection_location_inventory,  # ✨ NEW: Location inventory collection
+                                       db_collection_location_inventory,
                                        preference: str = 'closest_to_receiving') -> Dict[str, Any]:
-        """Main method to allocate a specific location for an item using location inventory"""
+        """Main method to allocate a specific location for an item using improved fallback logic"""
         
         try:
             # Step 1: Predict optimal rack group using ML model
@@ -173,7 +193,6 @@ class LocationAllocationService:
             print(f"🤖 ML predicted rack group: {predicted_rack_group}")
             
             # Step 2: Get available locations from location inventory  
-            # First try the predicted rack group type
             location_type = self._get_location_type_from_rack_group(predicted_rack_group)
             available_locations = await self.get_available_locations_from_inventory(
                 db_collection_location_inventory, 
@@ -181,45 +200,59 @@ class LocationAllocationService:
             )
             
             if not available_locations:
-                print(f"⚠️ No available locations of type {location_type}, trying all types")
-                # If no locations of predicted type, try all types
-                available_locations = await self.get_available_locations_from_inventory(
-                    db_collection_location_inventory
-                )
-            
-            if not available_locations:
                 return {
                     'success': False,
-                    'error': 'No available locations in warehouse',
+                    'error': f'No available locations of type {location_type} in entire warehouse',
                     'allocated_location': None,
                     'predicted_rack_group': predicted_rack_group,
-                    'allocation_reason': 'Warehouse is full'
+                    'allocation_reason': f'Warehouse has no {location_type} type locations available'
                 }
             
-            # Step 3: Filter to predicted rack group first
-            preferred_locations = self.filter_locations_by_rack_group(
-                available_locations, 
-                predicted_rack_group
-            )
+            # ✨ IMPROVED: Step 3 - Try fallback sequence for same rack type
+            fallback_sequence = self.get_fallback_rack_sequence(predicted_rack_group)
+            print(f"🔄 Trying rack sequence: {fallback_sequence}")
             
-            # Step 4: Select optimal location
-            if preferred_locations:
-                selected_location = self.select_optimal_location(preferred_locations, preference)
-                allocation_reason = f"ML model predicted {predicted_rack_group} with {prediction_result['confidence']:.2f} confidence"
-            else:
-                # Fallback to any available location if predicted rack group is full
-                selected_location = self.select_optimal_location(available_locations, preference)
-                actual_rack_group = self._get_rack_group_from_location(selected_location)
-                allocation_reason = f"Fallback allocation - predicted {predicted_rack_group} was full, using {actual_rack_group}"
+            selected_location = None
+            used_rack_group = None
+            allocation_reason = None
             
+            for rack_group in fallback_sequence:
+                # Filter to current rack group
+                rack_locations = self.filter_locations_by_rack_group(available_locations, rack_group)
+                
+                if rack_locations:
+                    # Found available locations in this rack group
+                    selected_location = self.select_optimal_location(rack_locations, preference)
+                    used_rack_group = rack_group
+                    
+                    if rack_group == predicted_rack_group:
+                        allocation_reason = f"ML model predicted {predicted_rack_group} with {prediction_result['confidence']:.2f} confidence"
+                    else:
+                        allocation_reason = f"ML predicted {predicted_rack_group} (full) → Using fallback {rack_group}"
+                    
+                    print(f"✅ Found location in {rack_group}: {selected_location}")
+                    break
+                else:
+                    print(f"❌ No available locations in {rack_group}")
+            
+            # ✨ IMPROVED: If no locations found in any rack of the same type
             if not selected_location:
+                rack_type_names = {
+                    'M': 'B Racks (Medium/Bin)',
+                    'S': 'P Racks (Small/Pellet)', 
+                    'D': 'D Racks (Large)'
+                }
+                
                 return {
                     'success': False,
-                    'error': 'No suitable location found',
-                    'allocated_location': None
+                    'error': f'No available space to store in {rack_type_names.get(location_type, "any racks")}',
+                    'allocated_location': None,
+                    'predicted_rack_group': predicted_rack_group,
+                    'checked_racks': fallback_sequence,
+                    'allocation_reason': f'All {rack_type_names.get(location_type)} are full'
                 }
             
-            # Step 5: Get coordinates for the selected location
+            # Step 4: Get coordinates for the selected location
             slot_code = selected_location.split('.')[0]
             floor = int(selected_location.split('.')[1])
             coordinates = self.get_slot_coordinates(slot_code)
@@ -234,8 +267,10 @@ class LocationAllocationService:
                     'floor': floor
                 },
                 'predicted_rack_group': predicted_rack_group,
+                'used_rack_group': used_rack_group,
                 'confidence': prediction_result['confidence'],
                 'total_available_locations': len(available_locations),
+                'checked_racks': fallback_sequence,
                 'allocation_reason': allocation_reason
             }
             

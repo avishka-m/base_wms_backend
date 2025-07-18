@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+import pandas as pd
 
 from ..utils.database import get_collection
 from ..models.inventory import InventoryCreate, InventoryUpdate
@@ -281,3 +282,57 @@ class InventoryService:
             anomaly_collection.insert_many(anomalies)
         
         return anomalies
+    
+    @staticmethod
+    def get_required_quantity(product_id: str, start_date, end_date, forecast_df, stock_df) -> Dict[str, Any]:
+        """
+        Calculate required restock quantity for a product in a date range.
+
+        Args:
+            product_id (str): The product to check.
+            start_date (str or datetime): Start of the forecast period.
+            end_date (str or datetime): End of the forecast period.
+            forecast_df (pd.DataFrame): DataFrame with columns ['ds', 'product_id', 'yhat'] (yhat = predicted demand).
+            stock_df (pd.DataFrame): DataFrame with columns ['product_id', 'available_stock'].
+
+        Returns:
+            dict: {
+                "product_id": ...,
+                "predicted_demand": ...,
+                "available_stock": ...,
+                "required_quantity": ...
+            }
+        """
+        mask = (
+            (forecast_df['product_id'] == product_id) &
+            (forecast_df['ds'] >= pd.to_datetime(start_date)) &
+            (forecast_df['ds'] <= pd.to_datetime(end_date))
+        )
+        predicted_demand = forecast_df.loc[mask, 'yhat'].sum()
+        stock_row = stock_df[stock_df['product_id'] == product_id]
+        available_stock = stock_row['available_stock'].iloc[0] if not stock_row.empty else 0
+        required_quantity = max(0, predicted_demand - available_stock)
+        return {
+            "product_id": product_id,
+            "predicted_demand": float(predicted_demand),
+            "available_stock": int(available_stock),
+            "required_quantity": int(required_quantity)
+        }
+    
+    @staticmethod
+    def save_demand_forecast(product_id: str, date, predicted_demand: float, model_version: str = "v1.0"):
+        """
+        Save or update the predicted demand for a product and date.
+        """
+        forecast_collection = get_collection("demand_forecasts")
+        forecast_collection.update_one(
+            {"product_id": product_id, "date": pd.to_datetime(date)},
+            {
+                "$set": {
+                    "predicted_demand": predicted_demand,
+                    "created_at": datetime.utcnow(),
+                    "model_version": model_version
+                }
+            },
+            upsert=True
+        )

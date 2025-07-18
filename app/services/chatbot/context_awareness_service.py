@@ -15,6 +15,7 @@ import re
 
 from app.utils.database import get_async_collection
 from app.utils.chatbot.api_client import APIClient
+from langsmith import traceable
 
 logger = logging.getLogger("wms_chatbot.context_awareness_service")
 
@@ -707,6 +708,7 @@ class ContextAwarenessService:
             logger.error(f"Failed to detect context from message: {str(e)}")
             return {}
     
+    @traceable(name="context_enrichment", run_type="chain")
     async def get_context_enriched_response(
         self,
         user_id: str,

@@ -1,5 +1,6 @@
 """
 Enhanced Agent service for managing AI agents in the WMS Chatbot with role-based selection and management.
+Enhanced Agent service for managing AI agents in the WMS Chatbot with role-based selection and management.
 """
 
 import logging
@@ -11,6 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import re
 from collections import defaultdict, deque
+from langsmith import traceable
 
 # Add current directory to path for imports
 current_dir = os.path.dirname(__file__)
@@ -25,6 +27,7 @@ try:
     from app.agents.driver_agent import DriverAgent
     from app.agents.manager_agent import ManagerAgent
     from app.config import ROLES
+    from app.config import ROLES
 except ImportError as e:
     logging.error(f"Error importing agents: {e}")
     # Create mock agents for testing
@@ -34,8 +37,20 @@ except ImportError as e:
             self.tools = []
         def run(self, message): 
             return f"Mock {self.role} response to: {message}"
+        def __init__(self, role="mock"):
+            self.role = role
+            self.tools = []
+        def run(self, message): 
+            return f"Mock {self.role} response to: {message}"
     
     ClerkAgent = PickerAgent = PackerAgent = DriverAgent = ManagerAgent = MockAgent
+    ROLES = {
+        "clerk": {"permissions": ["receiving", "returns"]},
+        "picker": {"permissions": ["picking", "inventory"]},
+        "packer": {"permissions": ["packing", "shipping"]},
+        "driver": {"permissions": ["delivery", "vehicle"]},
+        "manager": {"permissions": ["management", "analytics", "oversight"]}
+    }
     ROLES = {
         "clerk": {"permissions": ["receiving", "returns"]},
         "picker": {"permissions": ["picking", "inventory"]},
@@ -112,8 +127,80 @@ class AgentInfo:
 
 class EnhancedAgentService:
     """Enhanced service for managing and routing AI agents with intelligent selection."""
+class QueryType(Enum):
+    """Types of queries that can be handled by agents."""
+    INVENTORY = "inventory"
+    ORDERS = "orders"
+    PICKING = "picking"
+    PACKING = "packing"
+    SHIPPING = "shipping"
+    RECEIVING = "receiving"
+    RETURNS = "returns"
+    ANALYTICS = "analytics"
+    MANAGEMENT = "management"
+    VEHICLE = "vehicle"
+    LOCATION = "location"
+    WORKFLOW = "workflow"
+    GENERAL = "general"
+
+
+@dataclass
+class AgentCapability:
+    """Represents a capability of an agent."""
+    name: str
+    description: str
+    query_types: List[QueryType]
+    permission_required: Optional[str] = None
+    priority: int = 1  # Higher priority means better fit
+
+
+@dataclass
+class AgentPerformanceMetrics:
+    """Performance metrics for an agent."""
+    total_queries: int = 0
+    successful_queries: int = 0
+    failed_queries: int = 0
+    avg_response_time: float = 0.0
+    recent_response_times: deque = field(default_factory=lambda: deque(maxlen=100))
+    last_used: Optional[datetime] = None
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate as percentage."""
+        if self.total_queries == 0:
+            return 0.0
+        return (self.successful_queries / self.total_queries) * 100
+    
+    @property
+    def recent_avg_response_time(self) -> float:
+        """Calculate average response time from recent queries."""
+        if not self.recent_response_times:
+            return 0.0
+        return sum(self.recent_response_times) / len(self.recent_response_times)
+
+
+@dataclass
+class AgentInfo:
+    """Information about an agent."""
+    role: str
+    instance: Any
+    capabilities: List[AgentCapability]
+    performance_metrics: AgentPerformanceMetrics
+    is_active: bool = True
+    initialization_time: datetime = field(default_factory=datetime.utcnow)
+
+
+class EnhancedAgentService:
+    """Enhanced service for managing and routing AI agents with intelligent selection."""
     
     def __init__(self):
+        """Initialize the enhanced agent service."""
+        self.agents: Dict[str, AgentInfo] = {}
+        self.capability_map: Dict[QueryType, List[str]] = defaultdict(list)
+        self.query_patterns: Dict[QueryType, List[str]] = {}
+        self.user_agent_preferences: Dict[str, Dict[str, float]] = defaultdict(dict)
+        
+        self._initialize_query_patterns()
         """Initialize the enhanced agent service."""
         self.agents: Dict[str, AgentInfo] = {}
         self.capability_map: Dict[QueryType, List[str]] = defaultdict(list)
@@ -188,10 +275,208 @@ class EnhancedAgentService:
                 r'\b(status|progress|complete)\b'
             ]
         }
+        self._build_capability_map()
+    
+    def _initialize_query_patterns(self):
+        """Initialize regex patterns for query classification."""
+        self.query_patterns = {
+            QueryType.INVENTORY: [
+                r'\b(inventory|stock|item|product|sku|quantity|locate|find)\b',
+                r'\b(how many|count|available|in stock)\b',
+                r'\b(where is|location of|find item)\b'
+            ],
+            QueryType.ORDERS: [
+                r'\b(order|purchase|customer|delivery|fulfill)\b',
+                r'\b(order status|tracking|when will|expected)\b',
+                r'\b(create order|new order|place order)\b'
+            ],
+            QueryType.PICKING: [
+                r'\b(pick|picking|collect|gather|retrieve)\b',
+                r'\b(picking list|pick order|route|path)\b',
+                r'\b(optimal path|best route|shortest)\b'
+            ],
+            QueryType.PACKING: [
+                r'\b(pack|packing|package|box|ship)\b',
+                r'\b(packing slip|packaging|container)\b',
+                r'\b(ready to ship|pack order)\b'
+            ],
+            QueryType.SHIPPING: [
+                r'\b(ship|shipping|deliver|dispatch|send)\b',
+                r'\b(carrier|tracking|label|address)\b',
+                r'\b(shipping status|delivery time)\b'
+            ],
+            QueryType.RECEIVING: [
+                r'\b(receive|receiving|inbound|arrival|supplier)\b',
+                r'\b(purchase order|delivery|incoming)\b',
+                r'\b(check in|received goods)\b'
+            ],
+            QueryType.RETURNS: [
+                r'\b(return|refund|exchange|damaged|defective)\b',
+                r'\b(return reason|return process|rma)\b',
+                r'\b(credit|restock|return to vendor)\b'
+            ],
+            QueryType.ANALYTICS: [
+                r'\b(analytics|report|metrics|performance|kpi)\b',
+                r'\b(dashboard|statistics|trend|analysis)\b',
+                r'\b(productivity|efficiency|throughput)\b'
+            ],
+            QueryType.MANAGEMENT: [
+                r'\b(manage|oversight|approve|authorize|admin)\b',
+                r'\b(staff|employee|worker|schedule|assign)\b',
+                r'\b(system|configuration|settings)\b'
+            ],
+            QueryType.VEHICLE: [
+                r'\b(vehicle|truck|van|delivery|transport)\b',
+                r'\b(driver|route|fuel|maintenance)\b',
+                r'\b(loading|capacity|schedule)\b'
+            ],
+            QueryType.LOCATION: [
+                r'\b(location|where|zone|aisle|shelf|bin)\b',
+                r'\b(warehouse layout|map|directions)\b',
+                r'\b(move to|go to|navigate)\b'
+            ],
+            QueryType.WORKFLOW: [
+                r'\b(workflow|process|procedure|task|step)\b',
+                r'\b(next step|what to do|how to)\b',
+                r'\b(status|progress|complete)\b'
+            ]
+        }
     
     def _initialize_agents(self):
         """Initialize all AI agents with their capabilities."""
+        """Initialize all AI agents with their capabilities."""
         try:
+            # Define capabilities for each agent
+            agent_capabilities = {
+                "clerk": [
+                    AgentCapability(
+                        name="Receiving Management",
+                        description="Handle incoming shipments and receiving processes",
+                        query_types=[QueryType.RECEIVING, QueryType.INVENTORY],
+                        permission_required="receiving",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Returns Processing",
+                        description="Process returns and handle customer issues",
+                        query_types=[QueryType.RETURNS, QueryType.ORDERS],
+                        permission_required="returns",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Documentation",
+                        description="Handle paperwork and documentation",
+                        query_types=[QueryType.WORKFLOW, QueryType.GENERAL],
+                        priority=2
+                    )
+                ],
+                "picker": [
+                    AgentCapability(
+                        name="Item Location",
+                        description="Find and locate items in the warehouse",
+                        query_types=[QueryType.INVENTORY, QueryType.LOCATION],
+                        permission_required="picking",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Picking Operations",
+                        description="Execute picking tasks and optimize routes",
+                        query_types=[QueryType.PICKING, QueryType.ORDERS],
+                        permission_required="picking",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Path Optimization",
+                        description="Optimize picking routes and paths",
+                        query_types=[QueryType.LOCATION, QueryType.WORKFLOW],
+                        priority=2
+                    )
+                ],
+                "packer": [
+                    AgentCapability(
+                        name="Packing Operations",
+                        description="Pack orders and prepare for shipping",
+                        query_types=[QueryType.PACKING, QueryType.ORDERS],
+                        permission_required="packing",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Shipping Preparation",
+                        description="Prepare packages for shipment",
+                        query_types=[QueryType.SHIPPING, QueryType.WORKFLOW],
+                        permission_required="shipping",
+                        priority=2
+                    )
+                ],
+                "driver": [
+                    AgentCapability(
+                        name="Vehicle Management",
+                        description="Manage vehicles and transportation",
+                        query_types=[QueryType.VEHICLE, QueryType.SHIPPING],
+                        permission_required="delivery",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Delivery Operations",
+                        description="Handle delivery routes and logistics",
+                        query_types=[QueryType.SHIPPING, QueryType.LOCATION],
+                        permission_required="delivery",
+                        priority=3
+                    )
+                ],
+                "manager": [
+                    AgentCapability(
+                        name="Analytics & Reporting",
+                        description="Generate reports and analyze performance",
+                        query_types=[QueryType.ANALYTICS, QueryType.MANAGEMENT],
+                        permission_required="management",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="Workforce Management",
+                        description="Manage staff and operations",
+                        query_types=[QueryType.MANAGEMENT, QueryType.WORKFLOW],
+                        permission_required="management",
+                        priority=3
+                    ),
+                    AgentCapability(
+                        name="System Oversight",
+                        description="Oversee all warehouse operations",
+                        query_types=[QueryType.GENERAL, QueryType.ORDERS, QueryType.INVENTORY],
+                        permission_required="oversight",
+                        priority=2
+                    )
+                ]
+            }
+            
+            # Initialize agents with their capabilities
+            agent_classes = {
+                "clerk": ClerkAgent,
+                "picker": PickerAgent,
+                "packer": PackerAgent,
+                "driver": DriverAgent,
+                "manager": ManagerAgent
+            }
+            
+            for role, agent_class in agent_classes.items():
+                try:
+                    agent_instance = agent_class()
+                    capabilities = agent_capabilities.get(role, [])
+                    
+                    self.agents[role] = AgentInfo(
+                        role=role,
+                        instance=agent_instance,
+                        capabilities=capabilities,
+                        performance_metrics=AgentPerformanceMetrics()
+                    )
+                    logger.info(f"Initialized {role} agent with {len(capabilities)} capabilities")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to initialize {role} agent: {str(e)}")
+                    # Continue with other agents
+            
+            logger.info(f"Successfully initialized {len(self.agents)} agents")
+            
             # Define capabilities for each agent
             agent_capabilities = {
                 "clerk": [
@@ -427,6 +712,7 @@ class EnhancedAgentService:
         # Sort by suitability score
         return sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
     
+    @traceable(name="agent_selection", run_type="chain")
     def select_best_agent(
         self, 
         query: str, 
@@ -593,6 +879,7 @@ class EnhancedAgentService:
             # Decrease preference
             self.user_agent_preferences[user_role][agent_role] = max(-0.5, current_score - 0.1)
     
+    @traceable(name="agent_process_message", run_type="chain")
     async def process_message(
         self, 
         message: str, 

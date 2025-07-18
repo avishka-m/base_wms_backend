@@ -2,8 +2,16 @@ from typing import List, Dict, Any, Optional
 from .base_agent import BaseAgent
 
 # Import tools directly instead of dynamic loading
-from app.tools.chatbot.inventory_tools import locate_item_tool
-from app.tools.chatbot.order_tools import check_order_tool, create_picking_task_tool, update_picking_task_tool
+from app.tools.chatbot.inventory_tools import (
+    inventory_query_tool,
+    locate_item_tool,
+    low_stock_alert_tool
+)
+from app.tools.chatbot.order_tools import (
+    check_order_tool, 
+    create_picking_task_tool, 
+    update_picking_task_tool
+)
 from app.tools.chatbot.path_tools import path_optimize_tool
 
 class PickerAgent(BaseAgent):
@@ -19,10 +27,15 @@ class PickerAgent(BaseAgent):
         
         # Set the tools directly - this avoids the dynamic loading issues
         self.tools = [
+            # Inventory tools for pickers
+            inventory_query_tool,
             locate_item_tool,
+            low_stock_alert_tool,
+            # Picking and order management
             check_order_tool,
             create_picking_task_tool,
             update_picking_task_tool,
+            # Path optimization
             path_optimize_tool
         ]
         

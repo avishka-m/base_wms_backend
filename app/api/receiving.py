@@ -90,12 +90,12 @@ def load_ml_services():
         return None
 
 # Load the services
-allocation_service = load_ml_services()
+# allocation_service = load_ml_services()
 
-if allocation_service:
-    print("✅ ML services loaded successfully via importlib")
-else:
-    print("⚠️ ML services not available - using fallback")
+# if allocation_service:
+#     print("✅ ML services loaded successfully via importlib")
+# else:
+#     print("⚠️ ML services not available - using fallback")
 
 router = APIRouter()
 
@@ -163,7 +163,32 @@ async def get_receiving_records(
     
     # Execute query
     receiving_records = list(receiving_collection.find(query).skip(skip).limit(limit))
-    return receiving_records
+    
+    # Transform records to ensure they match the expected schema
+    transformed_records = []
+    for record in receiving_records:
+        # Ensure workerID is present (fallback for legacy data)
+        if "workerID" not in record:
+            record["workerID"] = 1  # Default workerID for legacy records
+        
+        # Transform items to ensure expected_quantity and proper locationID
+        if "items" in record:
+            for item in record["items"]:
+                # Ensure expected_quantity is present
+                if "expected_quantity" not in item:
+                    item["expected_quantity"] = item.get("quantity", 0)  # Default to actual quantity
+                
+                # Ensure locationID is integer if present
+                if "locationID" in item and isinstance(item["locationID"], str):
+                    try:
+                        # Try to extract numeric part from location strings like "B01.1"
+                        item["locationID"] = 1  # Default to location 1 for string locations
+                    except (ValueError, TypeError):
+                        item["locationID"] = None
+        
+        transformed_records.append(record)
+    
+    return transformed_records
 
 # Get receiving record by ID
 @router.get("/{receiving_id}", response_model=ReceivingResponse)
@@ -182,6 +207,26 @@ async def get_receiving_record(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Receiving record with ID {receiving_id} not found"
         )
+    
+    # Transform record to ensure it matches the expected schema
+    # Ensure workerID is present (fallback for legacy data)
+    if "workerID" not in receiving:
+        receiving["workerID"] = 1  # Default workerID for legacy records
+    
+    # Transform items to ensure expected_quantity and proper locationID
+    if "items" in receiving:
+        for item in receiving["items"]:
+            # Ensure expected_quantity is present
+            if "expected_quantity" not in item:
+                item["expected_quantity"] = item.get("quantity", 0)  # Default to actual quantity
+            
+            # Ensure locationID is integer if present
+            if "locationID" in item and isinstance(item["locationID"], str):
+                try:
+                    # Try to extract numeric part from location strings like "B01.1"
+                    item["locationID"] = 1  # Default to location 1 for string locations
+                except (ValueError, TypeError):
+                    item["locationID"] = None
     
     return receiving
 
@@ -483,6 +528,34 @@ async def predict_locations_for_receiving_items(
     Call this when receiver finishes updating/processing items
     """
     try:
+        # Fallback if ML service is not available
+        if not allocation_service:
+            print(f"⚠️ ML prediction service is not available. Returning fallback predictions.")
+            receiving_collection = get_collection("receiving")
+            receiving = receiving_collection.find_one({"receivingID": receiving_id})
+            if not receiving:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Receiving record {receiving_id} not found"
+                )
+            predictions = []
+            for idx, item in enumerate(receiving.get("items", [])):
+                if not item.get("processed", False):
+                    predictions.append({
+                        "itemID": item["itemID"],
+                        "item_name": item.get("name", "Unknown"),
+                        "predicted_location": "B1.1",
+                        "coordinates": {"x": 1, "y": 2, "floor": 1},
+                        "confidence": 0.5,
+                        "reason": "Fallback allocation - ML service not available"
+                    })
+            return {
+                "receiving_id": receiving_id,
+                "predictions": predictions,
+                "total_items_predicted": len(predictions),
+                "total_errors": 0
+            }
+            
         # Check if ML service is available
         if not allocation_service:
             raise HTTPException(

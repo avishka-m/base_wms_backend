@@ -7,7 +7,6 @@ This service implements LangChain's ConversationSummaryBufferMemory to provide:
 - Token management to stay within limits
 - Good balance of context retention and performance
 """
-
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta

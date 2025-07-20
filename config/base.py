@@ -20,7 +20,14 @@ PROJECT_DESCRIPTION = "A comprehensive warehouse management system with AI-power
 # =============================================================================
 # SHARED DATABASE CONFIGURATION
 # =============================================================================
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+# Import optimized Atlas configuration
+try:
+    from atlas_optimization import get_database_url
+    MONGODB_URL = get_database_url()
+except ImportError:
+    # Fallback to environment variable or localhost
+    MONGODB_URL = os.getenv("MONGODB_URL", "")
+
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 
 # =============================================================================

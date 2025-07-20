@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 import json
 import os
 from datetime import datetime
+import uuid
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_openai_functions_agent
@@ -11,7 +12,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain.schema import SystemMessage as LCSystemMessage
 
 # Import LangSmith tracing capabilities
-from langsmith import traceable
+from langsmith import traceable, Client
+from langchain_core.runnables.config import RunnableConfig
 
 from app.config import OPENAI_API_KEY, LLM_MODEL, LLM_TEMPERATURE, ROLES
 from app.utils.chatbot.knowledge_base import knowledge_base
@@ -36,6 +38,16 @@ class BaseAgent:
         # Configure tracing options
         self.tracing_enabled = os.environ.get("LANGSMITH_TRACING", "false").lower() == "true"
         self.project_name = os.environ.get("LANGSMITH_PROJECT", "warehouse-management-system")
+        
+        # Initialize LangSmith client if tracing is enabled
+        self.langsmith_client = None
+        if self.tracing_enabled:
+            try:
+                self.langsmith_client = Client()
+                print(f"LangSmith tracing enabled for {role} agent")
+            except Exception as e:
+                print(f"Warning: Failed to initialize LangSmith client: {e}")
+                self.tracing_enabled = False
         
         # Initialize the LLM with tracing tags
         if OPENAI_API_KEY:
@@ -118,7 +130,11 @@ class BaseAgent:
             tags=[f"role:{self.role}", "wms-chatbot"],  # Tags for LangSmith tracing
         )
 
-    @traceable(name="agent_run", run_type="chain")
+    @traceable(
+        name="agent_run", 
+        run_type="chain",
+        project_name="warehouse-management-system"
+    )
     async def run(
         self, 
         query: str, 
@@ -164,6 +180,9 @@ class BaseAgent:
             else:
                 enriched_query = enhanced_query
             
+            # Create thread ID for this conversation
+            thread_id = f"{conversation_id}_{user_id}_{int(datetime.now().timestamp())}"
+            
             # Add metadata for LangSmith tracing
             metadata = {
                 "role": self.role,
@@ -171,13 +190,24 @@ class BaseAgent:
                 "user_id": user_id,
                 "query_type": self._classify_query_type(query),
                 "has_kb_results": len(kb_results) > 0,
-                "kb_results_count": len(kb_results)
+                "kb_results_count": len(kb_results),
+                "thread_id": thread_id,
+                "enhanced_query": len(enriched_query) > len(query),
+                "agent_type": f"{self.role}_agent"
             }
+            
+            # Create runnable config for LangSmith tracing
+            config = RunnableConfig(
+                tags=[f"role:{self.role}", "wms-chatbot", f"thread:{thread_id}"],
+                metadata=metadata,
+                run_name=f"{self.role}_agent_run",
+                project_name=self.project_name
+            ) if self.tracing_enabled else None
             
             # Run the agent with async execution and tracing enabled
             result = await agent_executor.ainvoke(
                 {"input": enriched_query},
-                config={"metadata": metadata} if self.tracing_enabled else {}
+                config=config
             )
             
             # Save the conversation to memory service
@@ -198,7 +228,11 @@ class BaseAgent:
             print(traceback.format_exc())
             return f"I encountered an error while processing your request. Please try again with a clearer question about warehouse operations."
 
-    @traceable(name="query_knowledge_base", run_type="retriever")
+    @traceable(
+        name="query_knowledge_base", 
+        run_type="retriever",
+        project_name="warehouse-management-system"
+    )
     def query_knowledge_base(self, query: str, n_results: int = 3) -> List[str]:
         """
         Query the knowledge base for relevant information.
@@ -212,7 +246,14 @@ class BaseAgent:
         """
         try:
             results = knowledge_base.query(query, n_results=n_results)
-            return [doc.page_content for doc in results]
+            documents = [doc.page_content for doc in results]
+            
+            # Log additional metadata for tracing
+            if self.langsmith_client and self.tracing_enabled:
+                # This helps track knowledge base usage
+                print(f"Knowledge base query: '{query}' returned {len(documents)} results")
+            
+            return documents
         except Exception as e:
             print(f"Error querying knowledge base: {e}")
             return []

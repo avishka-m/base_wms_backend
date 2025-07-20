@@ -712,7 +712,11 @@ class EnhancedAgentService:
         # Sort by suitability score
         return sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)
     
-    @traceable(name="agent_selection", run_type="chain")
+    @traceable(
+        name="agent_selection", 
+        run_type="chain",
+        project_name="warehouse-management-system"
+    )
     def select_best_agent(
         self, 
         query: str, 
@@ -879,7 +883,11 @@ class EnhancedAgentService:
             # Decrease preference
             self.user_agent_preferences[user_role][agent_role] = max(-0.5, current_score - 0.1)
     
-    @traceable(name="agent_process_message", run_type="chain")
+    @traceable(
+        name="agent_process_message", 
+        run_type="chain",
+        project_name="warehouse-management-system"
+    )
     async def process_message(
         self, 
         message: str, 

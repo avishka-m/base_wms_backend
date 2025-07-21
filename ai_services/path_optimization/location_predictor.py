@@ -186,6 +186,8 @@ class LocationPredictor:
             return 'P Rack 1'  # Small items to Pallet racks
         elif item_size == 'L':
             return 'D Rack 1'  # Large items to Bulk racks
+        elif item_size == 'XL':
+            return 'D Rack 2'  # Extra Large items to Bulk racks (different section)
         else:  # Medium or unknown
             return 'B Rack 1'  # Medium items to Bin racks
     

@@ -15,7 +15,7 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 
-from warehouse_mapper import warehouse_mapper
+from .warehouse_mapper import warehouse_mapper
 
 class LocationPredictor:
     """Handles location prediction using trained ML model"""
@@ -34,15 +34,16 @@ class LocationPredictor:
     
     
     def load_model(self):
-        """Load the trained model from pickle file"""
+        """Load the trained model from pickle file with improved error handling"""
         try:
             with open(self.model_path, 'rb') as f:
                 self.model = pickle.load(f)
             print(f"✅ Model loaded successfully from {self.model_path}")
         except FileNotFoundError:
             print(f"⚠️ Model file not found at {self.model_path}")
+            print("   Using fallback prediction logic")
             self.model = None
-        except (pickle.UnpicklingError, ModuleNotFoundError, AttributeError) as e:
+        except (pickle.UnpicklingError, ModuleNotFoundError, AttributeError, ImportError, ValueError) as e:
             print(f"⚠️ Error loading model (may be from different Python/sklearn version): {str(e)}")
             print("   Using fallback prediction logic")
             self.model = None

@@ -1,8 +1,8 @@
 # ai_services/path_optimization/allocation_service.py
 
 from typing import Dict, List, Any, Optional
-from warehouse_mapper import warehouse_mapper
-from location_predictor import location_predictor
+from .warehouse_mapper import warehouse_mapper
+from .location_predictor import location_predictor
 
 class LocationAllocationService:
     """Handles allocation of specific storage locations based on predictions"""

@@ -147,7 +147,7 @@ async def order_create_func(customer_id: int,
                 return f"❌ Inventory item with ID {item_id} not found."
             
             # Check stock availability
-            available_stock = inventory_item.get('stock_level', 0)
+            available_stock = inventory_item.get('total_stock', 0)
             if available_stock < quantity:
                 return f"❌ Insufficient stock for item {item_id}. Available: {available_stock}, Requested: {quantity}"
             

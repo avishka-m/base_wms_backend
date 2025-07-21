@@ -27,9 +27,9 @@ class InventoryService:
         if category:
             query["category"] = category
         if low_stock:
-            # Fix: Use aggregation to compare stock_level with min_stock_level
+            # Fix: Use aggregation to compare total_stock with min_stock_level
             inventory_items = list(inventory_collection.find({
-                "$expr": {"$lte": ["$stock_level", "$min_stock_level"]}
+                "$expr": {"$lte": ["$total_stock", "$min_stock_level"]}
             }).skip(skip).limit(limit))
             return inventory_items
         
@@ -131,7 +131,7 @@ class InventoryService:
             return {"error": f"Item with ID {item_id} not found"}
         
         # Calculate new stock level
-        current_stock = item.get("stock_level", 0)
+        current_stock = item.get("total_stock", 0)
         new_stock = current_stock + quantity_change
         
         # Prevent negative stock
@@ -141,7 +141,7 @@ class InventoryService:
         # Update stock level
         inventory_collection.update_one(
             {"itemID": item_id},
-            {"$set": {"stock_level": new_stock, "updated_at": datetime.utcnow()}}
+            {"$set": {"total_stock": new_stock, "updated_at": datetime.utcnow()}}
         )
         
         # Log the stock change
@@ -166,9 +166,9 @@ class InventoryService:
         """
         inventory_collection = get_collection("inventory")
         
-        # Find items where stock_level <= min_stock_level
+        # Find items where total_stock <= min_stock_level
         query = {
-            "$expr": {"$lte": ["$stock_level", "$min_stock_level"]}
+            "$expr": {"$lte": ["$total_stock", "$min_stock_level"]}
         }
         
         low_stock_items = list(inventory_collection.find(query))
@@ -207,14 +207,14 @@ class InventoryService:
         transferred_item = item.copy()
         transferred_item.pop("_id", None)
         transferred_item["locationID"] = destination_location_id
-        transferred_item["stock_level"] = quantity
+        transferred_item["total_stock"] = quantity
         transferred_item["created_at"] = datetime.utcnow()
         transferred_item["updated_at"] = datetime.utcnow()
         
         # Reduce stock at source location
         inventory_collection.update_one(
             {"itemID": item_id, "locationID": source_location_id},
-            {"$inc": {"stock_level": -quantity}, "$set": {"updated_at": datetime.utcnow()}}
+            {"$inc": {"total_stock": -quantity}, "$set": {"updated_at": datetime.utcnow()}}
         )
         
         # Insert or update stock at destination location
@@ -227,7 +227,7 @@ class InventoryService:
             # Update existing item at destination
             inventory_collection.update_one(
                 {"itemID": item_id, "locationID": destination_location_id},
-                {"$inc": {"stock_level": quantity}, "$set": {"updated_at": datetime.utcnow()}}
+                {"$inc": {"total_stock": quantity}, "$set": {"updated_at": datetime.utcnow()}}
             )
         else:
             # Insert new item at destination
@@ -252,26 +252,26 @@ class InventoryService:
         anomalies = []
         
         # Check for negative stock
-        negative_stock = list(inventory_collection.find({"stock_level": {"$lt": 0}}))
+        negative_stock = list(inventory_collection.find({"total_stock": {"$lt": 0}}))
         for item in negative_stock:
             anomalies.append({
                 "itemID": item.get("itemID"),
                 "name": item.get("name"),
                 "anomaly_type": "negative_stock",
-                "current_level": item.get("stock_level"),
+                "current_level": item.get("total_stock"),
                 "detected_at": datetime.utcnow()
             })
         
         # Check for stock above maximum level
         over_stock = list(inventory_collection.find({
-            "$expr": {"$gt": ["$stock_level", "$max_stock_level"]}
+            "$expr": {"$gt": ["$total_stock", "$max_stock_level"]}
         }))
         for item in over_stock:
             anomalies.append({
                 "itemID": item.get("itemID"),
                 "name": item.get("name"),
                 "anomaly_type": "over_stock",
-                "current_level": item.get("stock_level"),
+                "current_level": item.get("total_stock"),
                 "max_level": item.get("max_stock_level"),
                 "detected_at": datetime.utcnow()
             })

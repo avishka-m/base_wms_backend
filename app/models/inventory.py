@@ -9,7 +9,7 @@ class InventoryBase(BaseModel):
     category: str = Field(..., description="Item category")
     size: str = Field(..., description="Item size (S, M, L, XL, etc.)")
     storage_type: str = Field(..., description="Storage type requirements (standard, refrigerated, hazardous, etc.)")
-    stock_level: int = Field(0, description="Current stock level")
+    total_stock: int = Field(0, description="Current total stock level")
     min_stock_level: int = Field(0, description="Minimum stock level before reordering")
     max_stock_level: int = Field(0, description="Maximum stock level")
     supplierID: int = Field(..., description="ID of the supplier for this item")
@@ -24,7 +24,7 @@ class InventoryUpdate(BaseModel):
     category: Optional[str] = None
     size: Optional[str] = None
     storage_type: Optional[str] = None
-    stock_level: Optional[int] = None
+    total_stock: Optional[int] = None
     min_stock_level: Optional[int] = None
     max_stock_level: Optional[int] = None
     supplierID: Optional[int] = None
@@ -43,7 +43,7 @@ class InventoryInDB(BaseDBModel, InventoryBase):
                 "category": "Electronics",
                 "size": "M",
                 "storage_type": "standard",
-                "stock_level": 100,
+                "total_stock": 100,
                 "min_stock_level": 20,
                 "max_stock_level": 200,
                 "supplierID": 1,
@@ -60,12 +60,12 @@ class InventoryResponse(BaseDBModel, InventoryBase):
     # Helper method to check if stock is low
     @property
     def is_low_stock(self) -> bool:
-        return self.stock_level <= self.min_stock_level
+        return self.total_stock <= self.min_stock_level
     
     # Helper method to check if stock is full
     @property
     def is_full_stock(self) -> bool:
-        return self.stock_level >= self.max_stock_level
+        return self.total_stock >= self.max_stock_level
 
     class Config:
         populate_by_name = True
@@ -76,7 +76,7 @@ class InventoryResponse(BaseDBModel, InventoryBase):
                 "category": "Electronics",
                 "size": "M",
                 "storage_type": "standard",
-                "stock_level": 100,
+                "total_stock": 100,
                 "min_stock_level": 20,
                 "max_stock_level": 200,
                 "supplierID": 1,

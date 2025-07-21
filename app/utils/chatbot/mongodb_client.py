@@ -214,7 +214,7 @@ class ChatbotMongoDBClient:
             db = await self.get_async_database()
             collection = db["inventory"]
             
-            filter_criteria = {"stock_level": {"$lt": threshold}}
+            filter_criteria = {"total_stock": {"$lt": threshold}}
             cursor = collection.find(filter_criteria)
             items = await cursor.to_list(length=100)
             
@@ -342,19 +342,19 @@ class ChatbotMongoDBClient:
                     "$group": {
                         "_id": None,
                         "total_items": {"$sum": 1},
-                        "total_stock": {"$sum": "$stock_level"},
-                        "avg_stock": {"$avg": "$stock_level"},
-                        "max_stock": {"$max": "$stock_level"},
-                        "min_stock": {"$min": "$stock_level"},
+                        "total_stock": {"$sum": "$total_stock"},
+                        "avg_stock": {"$avg": "$total_stock"},
+                        "max_stock": {"$max": "$total_stock"},
+                        "min_stock": {"$min": "$total_stock"},
                         "categories": {"$addToSet": "$category"},
                         "low_stock_count": {
                             "$sum": {
-                                "$cond": [{"$lt": ["$stock_level", 10]}, 1, 0]
+                                "$cond": [{"$lt": ["$total_stock", 10]}, 1, 0]
                             }
                         },
                         "zero_stock_count": {
                             "$sum": {
-                                "$cond": [{"$eq": ["$stock_level", 0]}, 1, 0]
+                                "$cond": [{"$eq": ["$total_stock", 0]}, 1, 0]
                             }
                         }
                     }
@@ -378,8 +378,8 @@ class ChatbotMongoDBClient:
                     "$group": {
                         "_id": "$category",
                         "count": {"$sum": 1},
-                        "total_stock": {"$sum": "$stock_level"},
-                        "avg_stock": {"$avg": "$stock_level"}
+                        "total_stock": {"$sum": "$total_stock"},
+                        "avg_stock": {"$avg": "$total_stock"}
                     }
                 },
                 {"$sort": {"count": -1}}

@@ -94,9 +94,9 @@ generated/
 *.xls
 
 # AI Services data directories - comprehensive patterns
-ai_services/*/data/
+#ai_services/*/data/
 ai_services/*/datasets/
-ai_services/*/models/
+#ai_services/*/models/
 ai_services/*/cache/
 ai_services/chatbot/data/
 ai_services/chatbot/chroma_db/
@@ -117,7 +117,7 @@ ai_services/seasonal_inventory/data/models_backup_20250714_120323
 setupRK.txt
 
 # Model files
-*.pkl
+#*.pkl
 *.joblib
 *.h5
 *.pb

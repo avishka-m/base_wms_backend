@@ -1,10 +1,21 @@
+
 import os
 from typing import Dict, List, Any
-from dotenv import load_dotenv 
-from ...config.base import (
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Ensure required environment variables are set before importing base config
+if "MONGODB_URL" not in os.environ:
+    os.environ["MONGODB_URL"] = "mongodb://localhost:27017"
+if "DATABASE_NAME" not in os.environ:
+    os.environ["DATABASE_NAME"] = "warehouse_management"
+
+# Use absolute import for base config
+from config.base import (
     MONGODB_URL, DATABASE_NAME, PROJECT_VERSION, ENVIRONMENT as BASE_ENVIRONMENT,
     get_database_config
 )
+
 
 # Load environment variables
 load_dotenv()
@@ -30,98 +41,105 @@ WMS_API_BASE_URL = os.getenv("WMS_API_BASE_URL", "http://localhost:8002/api/v1")
 WMS_API_TIMEOUT = 30
 
 
-# # Kaggle API
-# KAGGLE_USERNAME = os.getenv("KAGGLE_USERNAME")
-# KAGGLE_KEY = os.getenv("KAGGLE_KEY")
 
-# # OpenAI API (for additional AI features)
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# # Weather API
-# WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
-# WEATHER_API_URL = "http://api.openweathermap.org/data/2.5"
-
-# # Economic Data APIs
-# FRED_API_KEY = os.getenv("FRED_API_KEY")  # Federal Reserve Economic Data
-# ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")  # Stock market data
-
-# # =============================================================================
-# # DATA SOURCES CONFIGURATION
-# # =============================================================================
-
-# # Kaggle Datasets Configuration
-# KAGGLE_DATASETS = {
-#     "high_priority": [
-#         {
-#             "name": "carrie1/ecommerce-data",
-#             "description": "E-commerce transaction data with seasonal patterns",
-#             "target_file": "data.csv",
-#             "date_column": "InvoiceDate",
-#             "quantity_column": "Quantity",
-#             "product_column": "StockCode"
-#         },
-#         {
-#             "name": "mkechinov/ecommerce-behavior-data",
-#             "description": "E-commerce behavior data",
-#             "target_file": "2019-Oct.csv",
-#             "date_column": "event_time",
-#             "quantity_column": "price",
-#             "product_column": "product_id"
-#         },
-#         {
-#             "name": "olistbr/brazilian-ecommerce",
-#             "description": "Brazilian e-commerce dataset",
-#             "target_file": "olist_orders_dataset.csv",
-#             "date_column": "order_purchase_timestamp",
-#             "quantity_column": "order_item_id",
-#             "product_column": "product_id"
-#         }
-#     ],
-#     "medium_priority": [
-#         {
-#             "name": "shashwatwork/dataco-smart-supply-chain",
-#             "description": "Supply chain dataset",
-#             "target_file": "DataCoSupplyChainDataset.csv",
-#             "date_column": "order date (DateOrders)",
-#             "quantity_column": "Order Item Quantity",
-#             "product_column": "Product Name"
-#         },
-#         {
-#             "name": "prasad22/retail-transactions-dataset",
-#             "description": "Retail transactions",
-#             "target_file": "Retail_Data_Transactions.csv",
-#             "date_column": "Transaction_Date",
-#             "quantity_column": "Quantity",
-#             "product_column": "Product_Category"
-#         }
-#     ]
-# }
 
 # Data Paths
-DATA_DIR = "base_wms_backend/ai_services/seasonal_inventory/data"
-DATASETS_DIR = f"{DATA_DIR}/datasets"
-PROCESSED_DIR = f"{DATA_DIR}/processed"
-MODELS_DIR = f"{DATA_DIR}/models"
-CACHE_DIR = f"{DATA_DIR}/cache"
+# DATA_DIR = "base_wms_backend/ai_services/seasonal_inventory/data"
+# DATASETS_DIR = f"{DATA_DIR}/datasets"
+# PROCESSED_DIR = "base_wms_backend/ai_services/seasonal_inventory/data/processed"
+# MODELS_DIR = "base_wms_backend/ai_services/seasonal_inventory/data/models"
+# CACHE_DIR = f"{DATA_DIR}/cache"
+
+# Always resolve to absolute path relative to this file
+_CONFIG_DIR = Path(__file__).parent.resolve()
+DATA_DIR = str((_CONFIG_DIR / "data").resolve())
+DATASETS_DIR = str((_CONFIG_DIR / "data" / "datasets").resolve())
+PROCESSED_DIR = str((_CONFIG_DIR / "data" / "processed").resolve())
+MODELS_DIR = str((_CONFIG_DIR / "data" / "models").resolve())
+CACHE_DIR = str((_CONFIG_DIR / "data" / "cache").resolve())
 
 
-# Default Prophet Parameters
+# Prophet Parameters for Each Category
 PROPHET_CONFIG = {
-    "base_model": {
+    "books_media": {
         "growth": "linear",
-        "seasonality_mode": "multiplicative",
+        "seasonality_mode": "additive",
         "yearly_seasonality": True,
         "weekly_seasonality": True,
         "daily_seasonality": False,
-        "changepoint_prior_scale": 0.05,
+        "changepoint_prior_scale": 0.5,
         "seasonality_prior_scale": 10.0,
         "holidays_prior_scale": 10.0,
         "mcmc_samples": 0,
         "interval_width": 0.8,
         "uncertainty_samples": 1000
     },
-    
-    # Custom Seasonalities
+    "clothing": {
+        "growth": "linear",
+        "seasonality_mode": "additive",
+        "yearly_seasonality": True,
+        "weekly_seasonality": True,
+        "daily_seasonality": False,
+        "changepoint_prior_scale": 1.0,
+        "seasonality_prior_scale": 10.0,
+        "holidays_prior_scale": 10.0,
+        "mcmc_samples": 0,
+        "interval_width": 0.8,
+        "uncertainty_samples": 1000
+    },
+    "electronics": {
+        "growth": "linear",
+        "seasonality_mode": "additive",
+        "yearly_seasonality": True,
+        "weekly_seasonality": True,
+        "daily_seasonality": False,
+        "changepoint_prior_scale": 1.0,
+        "seasonality_prior_scale": 10.0,
+        "holidays_prior_scale": 10.0,
+        "mcmc_samples": 0,
+        "interval_width": 0.8,
+        "uncertainty_samples": 1000
+    },
+    "health_beauty": {
+        "growth": "linear",
+        "seasonality_mode": "additive",
+        "yearly_seasonality": True,
+        "weekly_seasonality": True,
+        "daily_seasonality": False,
+        "changepoint_prior_scale": 0.5,
+        "seasonality_prior_scale": 10.0,
+        "holidays_prior_scale": 10.0,
+        "mcmc_samples": 0,
+        "interval_width": 0.8,
+        "uncertainty_samples": 1000
+    },
+    "home_garden": {
+        "growth": "linear",
+        "seasonality_mode": "additive",
+        "yearly_seasonality": True,
+        "weekly_seasonality": True,
+        "daily_seasonality": False,
+        "changepoint_prior_scale": 0.5,
+        "seasonality_prior_scale": 10.0,
+        "holidays_prior_scale": 10.0,
+        "mcmc_samples": 0,
+        "interval_width": 0.8,
+        "uncertainty_samples": 1000
+    },
+    "sports_outdoors": {
+        "growth": "linear",
+        "seasonality_mode": "additive",
+        "yearly_seasonality": True,
+        "weekly_seasonality": True,
+        "daily_seasonality": False,
+        "changepoint_prior_scale": 1.0,
+        "seasonality_prior_scale": 10.0,
+        "holidays_prior_scale": 10.0,
+        "mcmc_samples": 0,
+        "interval_width": 0.8,
+        "uncertainty_samples": 1000
+    },
+    # Shared custom seasonalities and holidays
     "custom_seasonalities": [
         {
             "name": "monthly",
@@ -130,72 +148,72 @@ PROPHET_CONFIG = {
             "prior_scale": 10.0
         },
         {
-            "name": "quarterly", 
+            "name": "quarterly",
             "period": 91.25,
             "fourier_order": 3,
             "prior_scale": 10.0
         }
     ],
-    
-    # Holidays Configuration
     "holidays": {
         "countries": ["US", "BR", "GB", "IN"],
         "custom_events": [
             {"holiday": "Black Friday", "date": "2024-11-29"},
-           
-            {"holiday": "Valentine's Day", "date": "2024-02-14"},
-           
+            {"holiday": "Valentine's Day", "date": "2024-02-14"}
         ]
     }
 }
 
-# Model Training Configuration
-TRAINING_CONFIG = {
-    "cross_validation": {
-        "initial": "730 days",  # 2 years
-        "period": "90 days",    # Every 3 months
-        "horizon": "90 days"    # 3 months ahead
-    },
-    
-    "hyperparameter_tuning": {
-        "changepoint_prior_scale": [0.001, 0.01, 0.1, 0.5],
-        "seasonality_prior_scale": [0.01, 0.1, 1.0, 10.0],
-        "holidays_prior_scale": [0.01, 0.1, 1.0, 10.0]
-    },
-    
-    "validation": {
-        "train_ratio": 0.8,
-        #"validation_ratio": 0.1,
-        "test_ratio": 0.1,
-        "min_train_days": 365
-    }
-}
+
+# # Model Training Configuration (Standardized)
+# TRAINING_CONFIG = {
+#     "cross_validation": {
+#         "initial_window": "730 days",   # Initial training window (2 years)
+#         "period": "90 days",            # Retrain every 3 months
+#         "horizon": "90 days"            # Forecast horizon for validation (3 months)
+#     },
+#     "hyperparameter_tuning": {
+#         "changepoint_prior_scale": [0.001, 0.01, 0.1, 0.5],
+#         "seasonality_prior_scale": [0.01, 0.1, 1.0, 10.0],
+#         "holidays_prior_scale": [0.01, 0.1, 1.0, 10.0]
+#     },
+#     "validation": {
+#         "train_ratio": 0.8,              # 80% for training
+#         "test_ratio": 0.1,               # 10% for testing
+#         "min_train_days": 365            # At least 1 year of data for training
+#     },
+#     "early_stopping": {
+#         "enabled": True,
+#         "patience": 5,                   # Stop if no improvement after 5 rounds
+#         "min_delta": 0.001               # Minimum improvement to continue
+#     },
+#     "random_seed": 42                    # For reproducibility
+# }
 
 
 # Feature Engineering Settings
-FEATURE_CONFIG = {
-    "temporal_features": [
-        "year", "month", "day", "dayofweek", "quarter",
-        "is_weekend", "is_month_start", "is_month_end",
-        "is_quarter_start", "is_quarter_end", "is_year_start", "is_year_end"
-    ],
+# FEATURE_CONFIG = {
+#     "temporal_features": [
+#         "year", "month", "day", "dayofweek", "quarter",
+#         "is_weekend", "is_month_start", "is_month_end",
+#         "is_quarter_start", "is_quarter_end", "is_year_start", "is_year_end"
+#     ],
     
-    "lag_features": {
-        "periods": [7, 14, 30, 90, 365],
-        "stats": ["mean", "std", "min", "max", "median"]
-    },
+#     "lag_features": {
+#         "periods": [7, 14, 30, 90, 365],
+#         "stats": ["mean", "std", "min", "max", "median"]
+#     },
     
-    "rolling_features": {
-        "windows": [7, 14, 30, 90],
-        "stats": ["mean", "std", "trend"]
-    },
+#     "rolling_features": {
+#         "windows": [7, 14, 30, 90],
+#         "stats": ["mean", "std", "trend"]
+#     },
     
-    "external_features": [
-        "temperature", "precipitation", "humidity",
-        "consumer_price_index", "unemployment_rate",
-        "stock_market_index"
-    ]
-}
+#     "external_features": [
+#         "temperature", "precipitation", "humidity",
+#         "consumer_price_index", "unemployment_rate",
+#         "stock_market_index"
+#     ]
+# }
 
 # Data Quality Checks
 DATA_QUALITY = {
@@ -285,40 +303,73 @@ MONITORING_CONFIG = {
 # Business Configuration
 BUSINESS_CONFIG = {
     "inventory_thresholds": {
-        "safety_stock_multiplier": 1.5,
-        "reorder_point_multiplier": 2.0,
-        "max_stock_multiplier": 4.0,
-        "stockout_probability_threshold": 0.05
+        #if current stock is 100 units
+        "safety_stock_multiplier": 1.5,#to handle sudden demand spike or delay,if lead time is 1 week , keep 100*1.5 =150 as the safety stock.
+        "reorder_point_multiplier": 2.0,#re-order when stock drop below ....(100*2=200)
+        "max_stock_multiplier": 4.0,#do not lead stock exceed(100*4=400), it would be oer stocking.
+         "stockout_probability_threshold": 0.05, 
+        #  If forecast shows more than 5% chance of running out of stock, trigger alerts or restocking
     },
     
-    "seasonality_detection": {
-        "min_seasonal_strength": 0.3,
-        "trend_change_threshold": 0.1,
-        "anomaly_threshold": 2.5
-    },
+    # "seasonality_detection": {
+    #     "min_seasonal_strength": 0.3,
+    #     "trend_change_threshold": 0.1,
+    #     "seasonal_periods": [7, 30, 90, 365],
+    # },
     
     "forecast_validation": {
         "max_growth_rate": 2.0,  # 200% growth
-        "min_accuracy_score": 0.6,
-        "confidence_interval_coverage": 0.8
+        # "min_accuracy_score": 0.6,
+        # "confidence_interval_coverage": 0.8
     }
 }
 
 # Alert Configuration
 ALERT_CONFIG = {
     "email_notifications": True,
-    "slack_webhook": os.getenv("SLACK_WEBHOOK_URL"),
-    "alert_cooldown": 3600,  # 1 hour
+    "slack_webhook": os.getenv("SLACK_WEBHOOK_URL"),#Send alert messages to a Slack channel using this URL.
+    "alert_cooldown": 3600,  # 1 hour,Wait 1 hour between alerts of the same type to avoid spamming.
     
     "alert_types": {
         "low_accuracy": {"threshold": 0.7, "severity": "medium"},
         "high_forecast_error": {"threshold": 0.3, "severity": "high"},
         "data_quality_issues": {"threshold": 0.8, "severity": "medium"},
+        # Meaning: If more than 80% of your input data has issues (like missing values, outliers, or wrong format), it's a problem.
         "model_drift": {"threshold": 0.2, "severity": "high"}
+        # Meaning: If more than 80% of your input data has issues (like missing values, outliers, or wrong format), it's a problem.
+        # You use metrics like Population Stability Index (PSI) or KL Divergence to check drift.
+        # If the drift score > 0.2 → it means the model might not generalize well anymore.
     }
+    
 }
 
+''' How to calculate forecast error / model accuracy
+Let’s say:
 
+Your model predicts 300 units for next week.
+
+The actual number of units sold next week is 450.
+
+➤ Calculate Forecast Error:
+The formula:
+
+Forecast Error=∣Actual−Predicted∣
+Actual
+Forecast Error= 
+Actual
+∣Actual−Predicted∣
+​
+ 
+=
+∣450−300∣/450
+=
+150/450
+=
+0.333
+=
+33.3%
+
+ Since 33.3% > 30% threshold, this triggers high_forecast_error'''
 
 ENVIRONMENT = BASE_ENVIRONMENT  # Inherit from base config
 
@@ -340,20 +391,16 @@ elif ENVIRONMENT == "testing":
     CACHE_CONFIG["forecast_cache_ttl"] = 60  # 1 minute
     PERFORMANCE_CONFIG["max_workers"] = 1
 
-# =============================================================================
-# AI-SPECIFIC MODEL CONFIGURATION
-# =============================================================================
+
 # Model Caching Strategy
 MODEL_CACHE_STRATEGY = os.getenv("MODEL_CACHE_STRATEGY", "data_hash")  # Options: "never", "time_based", "data_hash", "always"
 MODEL_CACHE_HOURS = int(os.getenv("MODEL_CACHE_HOURS", "24"))  # Only used if strategy is "time_based"
 
 # Model Retraining Configuration
-AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").lower() == "true"
-RETRAIN_SCHEDULE_CRON = os.getenv("RETRAIN_SCHEDULE_CRON", "0 2 * * *")  # Daily at 2 AM
+# AUTO_RETRAIN_ENABLED = os.getenv("AUTO_RETRAIN_ENABLED", "false").lower() == "true"
+# RETRAIN_SCHEDULE_CRON = os.getenv("RETRAIN_SCHEDULE_CRON", "0 2 * * *")  # Daily at 2 AM
 
-# =============================================================================
-# AI-SPECIFIC UTILITY FUNCTIONS
-# =============================================================================
+
 def get_kaggle_config() -> Dict[str, Any]:
     """Get Kaggle API configuration."""
     kaggle_username = os.getenv("KAGGLE_USERNAME")

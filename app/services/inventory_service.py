@@ -5,13 +5,29 @@ import pandas as pd
 from ..utils.database import get_collection
 from ..models.inventory import InventoryCreate, InventoryUpdate
 
+"""
+Service for inventory management operations.
+
+This service handles business logic for inventory operations such as
+stock level updates, inventory transfers, and stock verification.
+"""
+
 class InventoryService:
-    """
-    Service for inventory management operations.
-    
-    This service handles business logic for inventory operations such as
-    stock level updates, inventory transfers, and stock verification.
-    """
+
+    @staticmethod
+    async def get_current_stock_by_category(category: str) -> int:
+        """
+        Get the total current stock for a given category (case-insensitive).
+        """
+        inventory_collection = get_collection("inventory")
+        pipeline = [
+            {"$match": {"category": {"$regex": f"^{category}$", "$options": "i"}}},
+            {"$group": {"_id": "$category", "total_stock": {"$sum": "$stock_level"}}}
+        ]
+        result = list(inventory_collection.aggregate(pipeline))
+        if result:
+            return result[0]["total_stock"]
+        return 0
     
     @staticmethod
     async def get_inventory_items(skip: int = 0, limit: int = 100, 

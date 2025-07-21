@@ -109,20 +109,31 @@ async def get_items_by_status(
     Returns items available for storing and items available for picking.
     """
     try:
-        receiving_collection = get_collection("receiving_items")
+        receiving_collection = get_collection("receiving")
         inventory_collection = get_collection("inventory")
         
-        # Get items available for storing (status = 'received')
-        storing_items = list(receiving_collection.find({"status": "received"}))
+        # Get receiving records with status 'processing' (items available for storing)
+        receiving_records = list(receiving_collection.find({"status": "processing"}))
+        
+        # Extract individual items from receiving records that need storing
+        storing_items = []
+        for record in receiving_records:
+            for item in record.get("items", []):
+                # Only include items that haven't been processed yet
+                if not item.get("processed", False):
+                    storing_item = {
+                        **item,
+                        "receivingID": record.get("receivingID"),
+                        "type": record.get("type", "normal"),
+                        "original_return_id": record.get("original_return_id"),
+                        "_id": str(record.get("_id")) if record.get("_id") else None
+                    }
+                    storing_items.append(storing_item)
         
         # Get items available for picking (from inventory with status = 'stored')
         picking_items = list(inventory_collection.find({"status": "stored"}))
         
         # Convert ObjectId to string for JSON serialization
-        for item in storing_items:
-            if "_id" in item:
-                item["_id"] = str(item["_id"])
-        
         for item in picking_items:
             if "_id" in item:
                 item["_id"] = str(item["_id"])

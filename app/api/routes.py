@@ -12,6 +12,7 @@ from .picking import router as picking_router
 from .packing import router as packing_router
 from .shipping import router as shipping_router
 from .returns import router as returns_router
+from .storing import router as storing_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
 from .predictions import router as predictions_router
@@ -41,6 +42,7 @@ api_router.include_router(picking_router, prefix="/picking", tags=["Picking"])
 api_router.include_router(packing_router, prefix="/packing", tags=["Packing"])
 api_router.include_router(shipping_router, prefix="/shipping", tags=["Shipping"])
 api_router.include_router(returns_router, prefix="/returns", tags=["Returns"])
+api_router.include_router(storing_router, prefix="/storing", tags=["Storing Jobs"])
 api_router.include_router(vehicles_router, prefix="/vehicles", tags=["Vehicles"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(predictions_router, prefix="/predictions", tags=["AI Predictions"])

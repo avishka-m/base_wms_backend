@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import BaseModel, Field
 
 from .base import BaseDBModel, PyObjectId
@@ -16,7 +16,7 @@ class InventoryBase(BaseModel):
 
 # Inventory creation model
 class InventoryCreate(InventoryBase):
-    locationID: Optional[int] = Field(None, description="ID of the storage location")
+    locationID: Optional[Union[str, int]] = Field(None, description="Storage location code (e.g., B01.1, D02.2, P03.1) or location ID")
 
 # Inventory update model
 class InventoryUpdate(BaseModel):
@@ -28,12 +28,12 @@ class InventoryUpdate(BaseModel):
     min_stock_level: Optional[int] = None
     max_stock_level: Optional[int] = None
     supplierID: Optional[int] = None
-    locationID: Optional[int] = None
+    locationID: Optional[Union[str, int]] = None
 
 # Inventory in DB model
 class InventoryInDB(BaseDBModel, InventoryBase):
     itemID: int = Field(..., description="Unique item ID")
-    locationID: Optional[int] = Field(None, description="ID of the storage location")
+    locationID: Optional[Union[str, int]] = Field(None, description="Storage location code (e.g., B01.1, D02.2, P03.1) or location ID")
 
     class Config:
         populate_by_name = True
@@ -48,14 +48,14 @@ class InventoryInDB(BaseDBModel, InventoryBase):
                 "max_stock_level": 200,
                 "supplierID": 1,
                 "itemID": 1,
-                "locationID": 1
+                "locationID": "B01.1"
             }
         }
 
 # Inventory response model
 class InventoryResponse(BaseDBModel, InventoryBase):
     itemID: int = Field(..., description="Unique item ID")
-    locationID: Optional[int] = Field(None, description="ID of the storage location")
+    locationID: Optional[Union[str, int]] = Field(None, description="Storage location code (e.g., B01.1, D02.2, P03.1) or location ID")
     
     # Helper method to check if stock is low
     @property

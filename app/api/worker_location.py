@@ -327,12 +327,19 @@ async def initialize_dummy_worker_locations(
         workers = list(workers_collection.find({}))
         
         updated_count = 0
+        # ✨ FREE PATH COORDINATES (avoiding rack locations)
+        # Based on 10x12 warehouse grid with racks at specific locations
         dummy_locations = [
-            {"x": 0, "y": 0, "floor": 1},  # Receiving area
-            {"x": 2, "y": 1, "floor": 1},  # Near B racks
-            {"x": 6, "y": 1, "floor": 1},  # Near P racks
-            {"x": 5, "y": 9, "floor": 1},  # Near D racks
-            {"x": 1, "y": 5, "floor": 1},  # Middle of warehouse
+            {"x": 2, "y": 1, "floor": 1},   # Aisle between B Rack 1 & 2
+            {"x": 4, "y": 1, "floor": 1},   # Aisle between B Rack 2 & 3  
+            {"x": 6, "y": 1, "floor": 1},   # Aisle between B Rack 3 & P Rack 1
+            {"x": 8, "y": 1, "floor": 1},   # Aisle between P Rack 1 & 2
+            {"x": 2, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 4, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 6, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 8, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 0, "y": 5, "floor": 1},   # West pathway (along warehouse edge)
+            {"x": 9, "y": 5, "floor": 1},   # East pathway (along warehouse edge)
         ]
         
         current_time = datetime.utcnow().isoformat()
@@ -370,4 +377,86 @@ async def initialize_dummy_worker_locations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to initialize dummy locations: {str(e)}"
+        )
+
+
+@router.post("/redistribute-workers-from-receiving")
+async def redistribute_workers_from_receiving(
+    current_user: Dict[str, Any] = Depends(has_role(["Manager"]))
+) -> Dict[str, Any]:
+    """Move all workers away from receiving counter (0,0) to different free path locations"""
+    try:
+        workers_collection = get_collection("workers")
+        
+        # Get workers currently at receiving counter (0,0)
+        workers_at_receiving = list(workers_collection.find({
+            "$or": [
+                {"worker_location.x": 0, "worker_location.y": 0},
+                {"worker_location": {"$exists": False}}  # Workers without location
+            ]
+        }))
+        
+        if not workers_at_receiving:
+            return {
+                "message": "No workers found at receiving counter",
+                "workers_moved": 0
+            }
+        
+        # Free path coordinates (excluding receiving area and rack locations)
+        free_path_locations = [
+            {"x": 2, "y": 1, "floor": 1},   # Aisle between B Rack 1 & 2
+            {"x": 4, "y": 1, "floor": 1},   # Aisle between B Rack 2 & 3  
+            {"x": 6, "y": 1, "floor": 1},   # Aisle between B Rack 3 & P Rack 1
+            {"x": 8, "y": 1, "floor": 1},   # Aisle between P Rack 1 & 2
+            {"x": 2, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 4, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 6, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 8, "y": 9, "floor": 1},   # Main pathway (north of D racks)
+            {"x": 0, "y": 5, "floor": 1},   # West pathway (along warehouse edge)
+            {"x": 9, "y": 5, "floor": 1},   # East pathway (along warehouse edge)
+            {"x": 2, "y": 5, "floor": 1},   # Central aisle
+            {"x": 4, "y": 5, "floor": 1},   # Central aisle
+            {"x": 6, "y": 5, "floor": 1},   # Central aisle
+            {"x": 8, "y": 5, "floor": 1},   # Central aisle
+        ]
+        
+        current_time = datetime.utcnow().isoformat()
+        moved_count = 0
+        
+        for i, worker in enumerate(workers_at_receiving):
+            # Assign free path location (cycle through available locations)
+            location = free_path_locations[i % len(free_path_locations)]
+            
+            update_data = {
+                "worker_location": {
+                    "x": location["x"],
+                    "y": location["y"], 
+                    "floor": location["floor"],
+                    "last_updated": current_time,
+                    "status": "online",
+                    "redistributed_from_receiving": True
+                },
+                "last_location_update": current_time
+            }
+            
+            workers_collection.update_one(
+                {"_id": worker["_id"]},
+                {"$set": update_data}
+            )
+            moved_count += 1
+            
+            worker_name = worker.get("name", "Unknown")
+            print(f"✅ Moved worker {worker_name} from receiving to ({location['x']}, {location['y']})")
+        
+        return {
+            "message": f"Successfully moved {moved_count} workers from receiving counter to free path locations",
+            "workers_moved": moved_count,
+            "new_locations": free_path_locations[:moved_count]
+        }
+        
+    except Exception as e:
+        print(f"❌ Error redistributing workers: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to redistribute workers: {str(e)}"
         )

@@ -25,26 +25,6 @@ class RecommendationRequest(BaseModel):
     days_ahead: int = Field(30, ge=7, le=90, description="Planning horizon (7-90 days)")
 
 
-@router.get("/health")
-async def health_check():
-    try:
-        service = get_prophet_forecasting_service()
-        status = service.get_service_status()
-        
-        return {
-            "status": "healthy" if status["status"] == "ready" else "degraded",
-            "service": "prophet-forecasting",
-            "details": status,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "service": "prophet-forecasting", 
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
 
 @router.get("/products")
 async def get_available_products():
@@ -128,29 +108,5 @@ async def get_inventory_recommendations(
         logger.error(f"Recommendations error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Recommendations failed: {str(e)}")
 
-@router.get("/status")
-async def get_service_status():
-    
-    try:
-        service = get_prophet_forecasting_service()
-        
-        # Get basic status
-        service_status = service.get_service_status()
-        model_status = service.get_models_status()
-        
-        return {
-            "status": "success",
-            "service": service_status,
-            "models": {
-                "total_trained": model_status.get("total_models", 0),
-                "ready_for_forecast": model_status.get("ready_models", 0),
-                "last_updated": model_status.get("last_training_time", "unknown")
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Status check error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
 
 

@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from .api.prophet_forecasting_fixed import router as prophet_forecasting_fixed_router
+# from .api.prophet_forecasting import router as prophet_forecasting_router
 import logging
 from .config import (
     API_V1_PREFIX,
@@ -147,6 +149,19 @@ async def response_validation_exception_handler(request: Request, exc: ResponseV
 
 # Include API router
 app.include_router(api_router, prefix=API_V1_PREFIX)
+
+# app.include_router(
+#     prophet_forecasting_fixed_router,
+#     prefix="/api/v1/prophet-forecasting-fixed",  # You can change the prefix as needed
+#     tags=["Prophet Forecasting Fixed"]
+# )
+
+# The frontend uses /api/v1/prophet, so keep this one active:
+app.include_router(
+    prophet_forecasting_fixed_router,
+    prefix="/api/v1/prophet",
+    tags=["Prophet Forecasting"]
+)
 
 # Root endpoint
 @app.get("/")

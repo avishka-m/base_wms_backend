@@ -16,7 +16,7 @@ from .storing import router as storing_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
 
-from .prophet_forecasting_simple import router as prophet_router
+from .prophet_forecasting_fixed import router as prophet_router
 
 from .workflow import router as workflow_router
 from .role_based_orders import router as role_based_router

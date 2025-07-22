@@ -1,3 +1,4 @@
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import pandas as pd
@@ -13,6 +14,24 @@ stock level updates, inventory transfers, and stock verification.
 """
 
 class InventoryService:
+    @staticmethod
+    def update_category_stock(category: str):
+        """
+        Aggregate total stock for a category and update category_stock collection.
+        """
+        inventory_collection = get_collection("inventory")
+        category_stock_collection = get_collection("category_stock")
+        pipeline = [
+            {"$match": {"category": {"$regex": f"^{category}$", "$options": "i"}}},
+            {"$group": {"_id": "$category", "total_stock": {"$sum": "$stock_level"}}}
+        ]
+        result = list(inventory_collection.aggregate(pipeline))
+        total_stock = result[0]["total_stock"] if result else 0
+        category_stock_collection.update_one(
+            {"category": category},
+            {"$set": {"total_stock": total_stock, "updated_at": datetime.utcnow()}},
+            upsert=True
+        )
 
     @staticmethod
     async def get_current_stock_by_category(category: str) -> int:
@@ -88,6 +107,10 @@ class InventoryService:
         # Insert item to database
         result = inventory_collection.insert_one(item_data)
         
+        # Update category stock
+        category = item_data.get("category")
+        if category:
+            InventoryService.update_category_stock(category)
         # Return the created item
         created_item = inventory_collection.find_one({"_id": result.inserted_id})
         return created_item
@@ -109,8 +132,11 @@ class InventoryService:
             {"$set": update_data}
         )
         
-        # Return updated item
+        # Update category stock
         updated_item = inventory_collection.find_one({"itemID": item_id})
+        category = updated_item.get("category") if updated_item else None
+        if category:
+            InventoryService.update_category_stock(category)
         return updated_item
     
     @staticmethod
@@ -120,9 +146,14 @@ class InventoryService:
         """
         inventory_collection = get_collection("inventory")
         
+        # Find item before deletion to get category
+        item = inventory_collection.find_one({"itemID": item_id})
+        category = item.get("category") if item else None
         # Delete item
         inventory_collection.delete_one({"itemID": item_id})
-        
+        # Update category stock
+        if category:
+            InventoryService.update_category_stock(category)
         return {"message": f"Item with ID {item_id} has been deleted"}
     
     @staticmethod
@@ -171,8 +202,11 @@ class InventoryService:
         }
         stock_log_collection.insert_one(log_entry)
         
-        # Return updated item
+        # Update category stock
         updated_item = inventory_collection.find_one({"itemID": item_id})
+        category = updated_item.get("category") if updated_item else None
+        if category:
+            InventoryService.update_category_stock(category)
         return updated_item
     
     @staticmethod

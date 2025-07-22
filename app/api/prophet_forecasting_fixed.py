@@ -153,7 +153,8 @@ async def get_category_forecast(
 def get_db_category_forecast(
     category: str = Query(..., description="Category name"),
     start_date: str = Query(..., description="Start date (YYYY-MM-DD)"),
-    end_date: str = Query(..., description="End date (YYYY-MM-DD)")
+    end_date: str = Query(..., description="End date (YYYY-MM-DD)"),
+    lead_time_days: int = Query(3, ge=0, le=60, description="Lead time in days (default: 3)")
 ):
     """
     Fetch demand forecast for a category and date range from the demand_forecasts collection.
@@ -195,12 +196,17 @@ def get_db_category_forecast(
     # Business config thresholds
     thresholds = BUSINESS_CONFIG["inventory_thresholds"]
     safety_stock = current_stock * thresholds["safety_stock_multiplier"]
-    reorder_point = current_stock * thresholds["reorder_point_multiplier"]
     max_stock = current_stock * thresholds["max_stock_multiplier"]
     stockout_prob_threshold = thresholds["stockout_probability_threshold"]
 
-    # Calculate total predicted demand for the period
+    # Calculate average daily demand for the forecast period
+    num_days = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.strptime(start_date, "%Y-%m-%d")).days + 1
     total_predicted = sum(d.get("predicted_demand", 0) for d in results)
+    average_daily_demand = total_predicted / num_days if num_days > 0 else 0
+
+    # Reorder point: safety_stock + (average_daily_demand * lead_time_days)
+    reorder_point = safety_stock + (average_daily_demand * lead_time_days)
+
     # Projected stock after forecast period
     projected_stock = current_stock - total_predicted
 
@@ -215,25 +221,39 @@ def get_db_category_forecast(
     elif projected_stock > max_stock:
         alert = f"Overstock risk: Projected stock ({projected_stock:.2f}) exceeds max stock ({max_stock:.2f})"
 
+    # Find the first date where projected stock crosses below reorder point
+    running_stock = current_stock
+    crossing_date = None
+    for d in results:
+        running_stock -= d.get("predicted_demand", 0)
+        if crossing_date is None and running_stock < reorder_point:
+            crossing_date = d["date"]
+
     # Stockout probability (simple: if projected_stock < 0, probability = 1)
     stockout_probability = 1.0 if projected_stock < 0 else 0.0
     if stockout_probability > stockout_prob_threshold:
         alert = f"Stockout risk: Probability ({stockout_probability:.2f}) exceeds threshold ({stockout_prob_threshold})"
 
+    # Round recommendation and reorder_point for cleaner frontend display
+    rounded_recommendation = int(round(recommendation)) if recommendation is not None else None
+    rounded_reorder_point = int(round(reorder_point)) if reorder_point is not None else None
     return {
         "category": category,
         "start_date": start_date,
         "end_date": end_date,
+        "lead_time_days": lead_time_days,
         "forecast_data": results,
         "current_stock": current_stock,
         "total_predicted_demand": total_predicted,
+        "average_daily_demand": average_daily_demand,
         "projected_stock": projected_stock,
-        "recommendation": recommendation,
+        "recommendation": rounded_recommendation,
         "alert": alert,
         "safety_stock": safety_stock,
-        "reorder_point": reorder_point,
+        "reorder_point": rounded_reorder_point,
         "max_stock": max_stock,
-        "stockout_probability": stockout_probability
+        "stockout_probability": stockout_probability,
+        "crossing_date": crossing_date
     }
 
 

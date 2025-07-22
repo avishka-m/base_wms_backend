@@ -1,0 +1,42 @@
+# Core Web Framework
+fastapi>=0.115.12,<1.0
+uvicorn[standard]>=0.34.0,<1.0
+python-multipart>=0.0.9,<1.0
+
+# Database & ODM
+motor>=3.7.0,<4.0
+pymongo>=4.12.0,<5.0
+
+# Data Validation & Configuration
+pydantic>=2.11.3,<3.0
+pydantic-settings>=2.8.1,<3.0
+python-dotenv>=1.1.0,<2.0
+
+# Authentication & Security
+passlib[bcrypt]>=1.7.4,<2.0
+python-jose[cryptography]>=3.3.0,<4.0
+bcrypt>=4.0.1,<5.0
+email_validator>=2.1.1,<3.0
+
+# HTTP Client & Requests
+httpx>=0.28.1,<1.0
+requests>=2.32.3,<3.0
+
+# AI/ML & Language Processing
+openai>=1.72.0,<2.0
+langchain>=0.3.23,<1.0
+langchain-openai>=0.3.12,<1.0
+langchain-community>=0.3.21,<1.0
+
+# Data Science & Analytics
+numpy>=1.21.0,<2.0
+pandas>=1.3.0,<2.0
+scikit-learn>=1.0.0,<2.0
+networkx>=3.2.1,<4.0
+
+# Data Formats & Serialization
+PyYAML>=6.0.2,<7.0
+
+# Development & Utilities
+python-dateutil>=2.9.0,<3.0
+pytz>=2024.1,<2025.0

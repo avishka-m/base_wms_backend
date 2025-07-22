@@ -178,8 +178,10 @@ class OrdersService:
             if not inventory_item:
                 return {"error": f"Item with ID {item.itemID} not found"}
             
-            if inventory_item.get("stock_level", 0) < item.quantity:
-                return {"error": f"Insufficient stock for item {item.itemID}. Available: {inventory_item.get('stock_level')}, Requested: {item.quantity}"}
+            # Check stock level - handle both 'stock_level' and 'total_stock' field names
+            available_stock = inventory_item.get("stock_level") or inventory_item.get("total_stock", 0)
+            if available_stock < item.quantity:
+                return {"error": f"Insufficient stock for item {item.itemID}. Available: {available_stock}, Requested: {item.quantity}"}
             
             # Create order detail with ID
             order_detail = item.model_dump()
@@ -300,7 +302,10 @@ class OrdersService:
             # Find inventory locations for this item
             inventory_locations = list(inventory_collection.find({
                 "itemID": item_id,
-                "stock_level": {"$gt": 0}
+                "$or": [
+                    {"stock_level": {"$gt": 0}},
+                    {"total_stock": {"$gt": 0}}
+                ]
             }))
             
             # If no inventory found, add to list with no location
@@ -319,7 +324,7 @@ class OrdersService:
             remaining_quantity = quantity
             for inv_item in inventory_locations:
                 location_id = inv_item.get("locationID")
-                available_quantity = inv_item.get("stock_level", 0)
+                available_quantity = inv_item.get("stock_level") or inv_item.get("total_stock", 0)
                 
                 # Skip if no location assigned
                 if not location_id:
@@ -403,7 +408,7 @@ class OrdersService:
             
             # Get total stock for this item
             inventory_items = list(inventory_collection.find({"itemID": item_id}))
-            total_stock = sum(inv.get("stock_level", 0) for inv in inventory_items)
+            total_stock = sum(inv.get("stock_level") or inv.get("total_stock", 0) for inv in inventory_items)
             
             is_available = total_stock >= quantity
             if not is_available:
@@ -460,14 +465,17 @@ class OrdersService:
             # Find inventory locations for this item
             inventory_locations = list(inventory_collection.find({
                 "itemID": item_id,
-                "stock_level": {"$gt": 0}
+                "$or": [
+                    {"stock_level": {"$gt": 0}},
+                    {"total_stock": {"$gt": 0}}
+                ]
             }))
             
             # Allocate from each location until fulfilled
             remaining_quantity = quantity
             for inv_item in inventory_locations:
                 location_id = inv_item.get("locationID")
-                available_quantity = inv_item.get("stock_level", 0)
+                available_quantity = inv_item.get("stock_level") or inv_item.get("total_stock", 0)
                 
                 # Skip if no location assigned
                 if not location_id:

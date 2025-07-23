@@ -12,12 +12,11 @@ from typing import Any, Dict, List
 
 import joblib
 import numpy as np
+from app.utils.database import get_async_database
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 warnings.filterwarnings("ignore")
-
-from app.utils.database import get_async_database
 
 logger = logging.getLogger(__name__)
 

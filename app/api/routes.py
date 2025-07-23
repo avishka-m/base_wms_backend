@@ -21,7 +21,8 @@ from .returns import router as returns_router
 from .storing import router as storing_router
 from .vehicles import router as vehicles_router
 from .analytics import router as analytics_router
-
+from .receiving import router as receiving_router
+from .picking import router as picking_router
 from .prophet_forecasting_fixed import router as prophet_router
 
 from .workflow import router as workflow_router

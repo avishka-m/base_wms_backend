@@ -15,7 +15,7 @@ except ImportError:
     SKLEARN_AVAILABLE = False
 
 
-from warehouse_mapper import warehouse_mapper
+from .warehouse_mapper import warehouse_mapper
 
 class LocationPredictor:
     """Handles location prediction using trained ML model"""
@@ -34,15 +34,16 @@ class LocationPredictor:
     
     
     def load_model(self):
-        """Load the trained model from pickle file"""
+        """Load the trained model from pickle file with improved error handling"""
         try:
             with open(self.model_path, 'rb') as f:
                 self.model = pickle.load(f)
             print(f"✅ Model loaded successfully from {self.model_path}")
         except FileNotFoundError:
             print(f"⚠️ Model file not found at {self.model_path}")
+            print("   Using fallback prediction logic")
             self.model = None
-        except (pickle.UnpicklingError, ModuleNotFoundError, AttributeError) as e:
+        except (pickle.UnpicklingError, ModuleNotFoundError, AttributeError, ImportError, ValueError) as e:
             print(f"⚠️ Error loading model (may be from different Python/sklearn version): {str(e)}")
             print("   Using fallback prediction logic")
             self.model = None
@@ -186,6 +187,8 @@ class LocationPredictor:
             return 'P Rack 1'  # Small items to Pallet racks
         elif item_size == 'L':
             return 'D Rack 1'  # Large items to Bulk racks
+        elif item_size == 'XL':
+            return 'D Rack 2'  # Extra Large items to Bulk racks (different section)
         else:  # Medium or unknown
             return 'B Rack 1'  # Medium items to Bin racks
     

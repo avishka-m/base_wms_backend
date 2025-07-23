@@ -18,7 +18,16 @@ from functools import lru_cache
 import time
 
 # Use absolute imports for config
-from app.config import MONGODB_URL, DATABASE_NAME
+import sys
+config_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'config')
+sys.path.insert(0, config_path)
+
+from atlas_optimization import get_database_url, get_client_options
+from app.config import DATABASE_NAME
+
+# Get optimized connection settings
+MONGODB_URL = get_database_url()
+OPTIMIZED_CLIENT_OPTIONS = get_client_options()
 
 logger = logging.getLogger("wms_chatbot.mongodb_client")
 
@@ -55,27 +64,20 @@ class ChatbotMongoDBClient:
     """
     
     def __init__(self):
-        """Initialize the MongoDB client with connection pooling and caching."""
+        """Initialize the MongoDB client with optimized Atlas connection settings."""
         self.connection_string = MONGODB_URL
         self.db_name = DATABASE_NAME
         self._client = None
         self._async_client = None
         
-        # Initialize cache
-        self.cache = SimpleCache(ttl=300)  # 5 minutes cache
+        # Initialize cache with longer TTL for Atlas (reduce queries)
+        self.cache = SimpleCache(ttl=600)  # 10 minutes cache for Atlas
         
-        # Connection pool settings
-        self.client_options = {
-            'maxPoolSize': 50,
-            'minPoolSize': 5,
-            'maxIdleTimeMS': 30000,
-            'waitQueueTimeoutMS': 5000,
-            'serverSelectionTimeoutMS': 5000,
-            'connectTimeoutMS': 10000,
-            'socketTimeoutMS': 10000,
-        }
+        # Use optimized client options for Atlas or localhost
+        self.client_options = OPTIMIZED_CLIENT_OPTIONS
         
-        logger.info(f"ChatbotMongoDBClient initialized with DB: {self.db_name}")
+        logger.info(f"ChatbotMongoDBClient initialized with optimized settings for DB: {self.db_name}")
+        logger.info(f"Connection type: {'Atlas' if 'mongodb+srv' in self.connection_string else 'Localhost'}")
     
     def get_client(self) -> MongoClient:
         """Get or create synchronous MongoDB client with connection pooling."""
@@ -212,7 +214,7 @@ class ChatbotMongoDBClient:
             db = await self.get_async_database()
             collection = db["inventory"]
             
-            filter_criteria = {"stock_level": {"$lt": threshold}}
+            filter_criteria = {"total_stock": {"$lt": threshold}}
             cursor = collection.find(filter_criteria)
             items = await cursor.to_list(length=100)
             
@@ -340,19 +342,19 @@ class ChatbotMongoDBClient:
                     "$group": {
                         "_id": None,
                         "total_items": {"$sum": 1},
-                        "total_stock": {"$sum": "$stock_level"},
-                        "avg_stock": {"$avg": "$stock_level"},
-                        "max_stock": {"$max": "$stock_level"},
-                        "min_stock": {"$min": "$stock_level"},
+                        "total_stock": {"$sum": "$total_stock"},
+                        "avg_stock": {"$avg": "$total_stock"},
+                        "max_stock": {"$max": "$total_stock"},
+                        "min_stock": {"$min": "$total_stock"},
                         "categories": {"$addToSet": "$category"},
                         "low_stock_count": {
                             "$sum": {
-                                "$cond": [{"$lt": ["$stock_level", 10]}, 1, 0]
+                                "$cond": [{"$lt": ["$total_stock", 10]}, 1, 0]
                             }
                         },
                         "zero_stock_count": {
                             "$sum": {
-                                "$cond": [{"$eq": ["$stock_level", 0]}, 1, 0]
+                                "$cond": [{"$eq": ["$total_stock", 0]}, 1, 0]
                             }
                         }
                     }
@@ -376,8 +378,8 @@ class ChatbotMongoDBClient:
                     "$group": {
                         "_id": "$category",
                         "count": {"$sum": 1},
-                        "total_stock": {"$sum": "$stock_level"},
-                        "avg_stock": {"$avg": "$stock_level"}
+                        "total_stock": {"$sum": "$total_stock"},
+                        "avg_stock": {"$avg": "$total_stock"}
                     }
                 },
                 {"$sort": {"count": -1}}

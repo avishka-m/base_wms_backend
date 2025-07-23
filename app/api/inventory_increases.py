@@ -161,16 +161,43 @@ async def create_inventory_increase(
         # Insert the receiving record
         result = receiving_collection.insert_one(receiving_data)
         
-        print(f"✅ Inventory increase created without ML prediction - will predict when storing")
+        # ✨ RESTRUCTURED: Update total stock count in inventory collection
+        # The inventory collection now only tracks total quantities, not locations
+        inventory_update_result = inventory_collection.update_one(
+            {"itemID": item_id},
+            {
+                "$inc": {"total_stock": quantity},  # Increase total stock across warehouse
+                "$set": {
+                    "last_updated": datetime.utcnow().isoformat(),
+                    "last_received": datetime.utcnow().isoformat(),
+                    "last_received_quantity": quantity,
+                    "last_received_by": current_user.get("username", "system")
+                }
+            }
+        )
+        
+        if inventory_update_result.modified_count == 0:
+            print(f"⚠️ Warning: Failed to update inventory stock levels for item {item_id}")
+        else:
+            print(f"✅ Inventory stock increased by {quantity} for item {item_id}")
+        
+        # ✨ VERIFICATION: Check updated stock levels
+        updated_inventory = inventory_collection.find_one({"itemID": item_id})
+        if updated_inventory:
+            total_stock = updated_inventory.get("total_stock", 0)
+            print(f"📊 Updated total stock for item {item_id}: {total_stock} units across warehouse")
+        
+        print(f"✅ Inventory increase created - total stock updated automatically")
         
         return {
-            "message": "Inventory increase recorded successfully - location will be predicted when storing",
+            "message": "Inventory increase recorded successfully - total stock updated automatically",
             "receiving_id": next_receiving_id,
             "item_id": item_id,
             "item_name": item_name,
             "quantity": quantity,
+            "stock_updated": inventory_update_result.modified_count > 0,
             "status": "Item is now available for storing in picker dashboard",
-            "note": "ML prediction will happen when picker clicks 'Store' button"
+            "note": "Total stock increased - will be assigned to specific location when stored"
         }
         
     except Exception as e:
@@ -298,6 +325,8 @@ async def mark_inventory_increases_as_stored(
     Now uses location_inventory to track slot availability!
     """
     try:
+        print(f"🔍 mark_inventory_increases_as_stored called with data: {request_data}")
+        
         receiving_collection = get_collection("receiving")
         storage_collection = get_collection("storage_history")
         location_collection = get_collection("location_inventory")  # ✨ NEW: Location inventory
@@ -306,6 +335,8 @@ async def mark_inventory_increases_as_stored(
         item_name = request_data.get("item_name")
         quantity_stored = request_data.get("quantity_stored")
         actual_location = request_data.get("actual_location")  # e.g., "B02.1"
+        
+        print(f"🔍 Extracted values: itemID={item_id}, item_name={item_name}, quantity_stored={quantity_stored}, actual_location={actual_location}")
         
         if not item_id:
             raise HTTPException(
@@ -327,7 +358,8 @@ async def mark_inventory_increases_as_stored(
                 detail=f"Location {actual_location} not found in inventory system"
             )
         
-        if not location_record.get("available", False):
+        # ✨ FIXED: Check if location is OCCUPIED (not available)
+        if location_record.get("available", True) == False:
             # Get details of what's currently stored there
             current_item = location_record.get("itemName", "Unknown item")
             current_quantity = location_record.get("quantity", 0)
@@ -379,12 +411,13 @@ async def mark_inventory_increases_as_stored(
                 detail=f"Item {item_id} not found in receiving record"
             )
         
-        # ✨ NEW: Update location_inventory to mark as occupied
+        # ✨ RESTRUCTURED: Update location_inventory to mark specific location as occupied
+        # This tracks WHERE items are stored, not total quantities
         location_update_data = {
             "available": False,
             "itemID": item_id,
             "itemName": item_name or f"Item {item_id}",
-            "quantity": quantity_stored or stored_item.get("quantity", 1),
+            "quantity": quantity_stored or stored_item.get("quantity", 1),  # Quantity at THIS location
             "storedAt": datetime.utcnow().isoformat(),
             "storedBy": current_user.get("username", "Unknown"),
             "receivingID": record["receivingID"],
@@ -427,6 +460,7 @@ async def mark_inventory_increases_as_stored(
         print(f"✅ Item {item_id} stored in location {actual_location}")
         print(f"✅ Location inventory updated: {location_result.modified_count} records")
         print(f"✅ Storage history created: {storage_result.inserted_id}")
+        print(f"📝 Note: Total stock in inventory collection was already updated during receiving")
         
         # ✨ CHECK: ML prediction accuracy
         prediction_accuracy = "Unknown"
@@ -452,9 +486,151 @@ async def mark_inventory_increases_as_stored(
         
     except Exception as e:
         print(f"❌ Error in mark_inventory_increases_as_stored: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to mark inventory increase as stored"
+            detail=f"Failed to mark inventory increase as stored: {str(e)}"
+        )
+
+@router.post("/pick-from-location")
+async def pick_item_from_location(
+    request_data: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(has_role(["Manager", "Picker", "ShippingClerk"]))
+) -> Dict[str, Any]:
+    """
+    Pick items from a specific location.
+    Updates both location_inventory (location availability) and inventory (total stock).
+    """
+    try:
+        inventory_collection = get_collection("inventory")
+        location_collection = get_collection("location_inventory")
+        storage_collection = get_collection("storage_history")
+        
+        item_id = request_data.get("itemID")
+        location_id = request_data.get("locationID")
+        quantity_picked = request_data.get("quantity_picked")
+        reason = request_data.get("reason", "order_fulfillment")
+        
+        print(f"🔍 Picking from location: itemID={item_id}, locationID={location_id}, quantity={quantity_picked}")
+        
+        if not all([item_id, location_id, quantity_picked]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="itemID, locationID, and quantity_picked are required"
+            )
+        
+        # Check if location has the item
+        location_record = location_collection.find_one({
+            "locationID": location_id,
+            "itemID": item_id,
+            "available": False  # Location should be occupied
+        })
+        
+        if not location_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Item {item_id} not found in location {location_id}"
+            )
+        
+        current_quantity = location_record.get("quantity", 0)
+        
+        if quantity_picked > current_quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot pick {quantity_picked} items. Only {current_quantity} available in location {location_id}"
+            )
+        
+        # Update location_inventory
+        if quantity_picked == current_quantity:
+            # ✨ Complete pickup - make location available again
+            location_collection.update_one(
+                {"locationID": location_id},
+                {
+                    "$set": {
+                        "available": True,
+                        "lastUpdated": datetime.utcnow().isoformat(),
+                        "clearedAt": datetime.utcnow().isoformat(),
+                        "clearedBy": current_user.get("username", "Unknown")
+                    },
+                    "$unset": {
+                        "itemID": "",
+                        "itemName": "",
+                        "quantity": "",
+                        "storedAt": "",
+                        "storedBy": "",
+                        "receivingID": ""
+                    }
+                }
+            )
+            print(f"✅ Location {location_id} is now available (all items picked)")
+        else:
+            # ✨ Partial pickup - reduce quantity but keep location occupied
+            location_collection.update_one(
+                {"locationID": location_id},
+                {
+                    "$set": {
+                        "quantity": current_quantity - quantity_picked,
+                        "lastUpdated": datetime.utcnow().isoformat()
+                    }
+                }
+            )
+            print(f"✅ Reduced quantity in {location_id} from {current_quantity} to {current_quantity - quantity_picked}")
+        
+        # ✨ RESTRUCTURED: Decrease total stock in inventory collection
+        inventory_update_result = inventory_collection.update_one(
+            {"itemID": item_id},
+            {
+                "$inc": {"total_stock": -quantity_picked},  # Decrease total stock
+                "$set": {
+                    "last_updated": datetime.utcnow().isoformat(),
+                    "last_picked": datetime.utcnow().isoformat(),
+                    "last_picked_quantity": quantity_picked,
+                    "last_picked_by": current_user.get("username", "system")
+                }
+            }
+        )
+        
+        if inventory_update_result.modified_count == 0:
+            print(f"⚠️ Warning: Failed to update total stock for item {item_id}")
+        
+        # Record picking in storage_history
+        storage_entry = {
+            "locationID": location_id,
+            "action": "picked",
+            "itemID": item_id,
+            "item_name": location_record.get("itemName", f"Item {item_id}"),
+            "quantity": quantity_picked,
+            "picked_by": current_user.get("username", "Unknown"),
+            "picked_at": datetime.utcnow().isoformat(),
+            "reason": reason,
+            "remaining_in_location": current_quantity - quantity_picked
+        }
+        
+        storage_result = storage_collection.insert_one(storage_entry)
+        
+        # Verify updated total stock
+        updated_inventory = inventory_collection.find_one({"itemID": item_id})
+        new_total_stock = updated_inventory.get("total_stock", 0) if updated_inventory else 0
+        
+        print(f"📊 Updated total stock for item {item_id}: {new_total_stock} units")
+        
+        return {
+            "message": f"Successfully picked {quantity_picked} items from location {location_id}",
+            "itemID": item_id,
+            "locationID": location_id,
+            "quantity_picked": quantity_picked,
+            "remaining_in_location": current_quantity - quantity_picked,
+            "location_now_available": quantity_picked == current_quantity,
+            "new_total_stock": new_total_stock,
+            "storage_history_id": str(storage_result.inserted_id)
+        }
+        
+    except Exception as e:
+        print(f"❌ Error picking from location: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to pick item from location: {str(e)}"
         )
     
 @router.get("/predict-location/{item_id}")

@@ -136,7 +136,7 @@ class EnhancedConversationService:
                 "suggestions": []
             }
     
-    @traceable(name="conversation_creation", run_type="chain")
+    # @traceable(name="conversation_creation", run_type="chain")
     async def create_conversation(
         self,
         user_id: str,
@@ -217,7 +217,7 @@ class EnhancedConversationService:
             logger.error(f"Failed to create conversation: {str(e)}")
             raise
     
-    @traceable(name="message_addition", run_type="chain")
+    # @traceable(name="message_addition", run_type="chain")
     async def add_message(
         self,
         user_id: str,

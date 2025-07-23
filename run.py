@@ -23,3 +23,5 @@ if __name__ == "__main__":
         port=8002,  # Changed to 8002 to match frontend expectation
         reload=True 
     )
+    
+    

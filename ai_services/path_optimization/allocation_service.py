@@ -1,8 +1,8 @@
 # ai_services/path_optimization/allocation_service.py
 
 from typing import Dict, List, Any, Optional
-from warehouse_mapper import warehouse_mapper
-from location_predictor import location_predictor
+from .warehouse_mapper import warehouse_mapper
+from .location_predictor import location_predictor
 
 class LocationAllocationService:
     """Handles allocation of specific storage locations based on predictions"""
@@ -38,15 +38,17 @@ class LocationAllocationService:
     def filter_locations_by_rack_group(self, available_locations: List[str], target_rack_group: str) -> List[str]:
         """Filter available locations to only include those in the target rack group"""
         
-        # Map rack groups to location prefixes
+        # Map rack groups to location prefixes - SEASONAL OPTIMIZATION ORDER
+        # ✨ Higher numbers first for B and P (B07, P07 closest to packing)
+        # ✨ Lower numbers first for D (D08, D01 closest to packing due to horizontal distance)
         rack_group_prefixes = {
-            'B Rack 1': ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07'],
-            'B Rack 2': ['B08', 'B09', 'B10', 'B11', 'B12', 'B13', 'B14'], 
-            'B Rack 3': ['B15', 'B16', 'B17', 'B18', 'B19', 'B20', 'B21'],
-            'P Rack 1': ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07'],
-            'P Rack 2': ['P08', 'P09', 'P10', 'P11', 'P12', 'P13', 'P14'],
-            'D Rack 1': ['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07'],
-            'D Rack 2': ['D08', 'D09', 'D10', 'D11', 'D12', 'D13', 'D14']
+            'B Rack 1': ['B07', 'B06', 'B05', 'B04', 'B03', 'B02', 'B01'],  # B07 closest to packing
+            'B Rack 2': ['B14', 'B13', 'B12', 'B11', 'B10', 'B09', 'B08'],  # B14 closest to packing
+            'B Rack 3': ['B21', 'B20', 'B19', 'B18', 'B17', 'B16', 'B15'],  # B21 closest to packing
+            'P Rack 1': ['P07', 'P06', 'P05', 'P04', 'P03', 'P02', 'P01'],  # P07 closest to packing
+            'P Rack 2': ['P14', 'P13', 'P12', 'P11', 'P10', 'P09', 'P08'],  # P14 closest to packing
+            'D Rack 1': ['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07'],  # D01 closest to packing (x=3)
+            'D Rack 2': ['D08', 'D09', 'D10', 'D11', 'D12', 'D13', 'D14']   # D08 closest to packing (x=3)
         }
         
         prefixes = rack_group_prefixes.get(target_rack_group, [])
@@ -86,14 +88,34 @@ class LocationAllocationService:
     
     def select_optimal_location(self, 
                                available_locations: List[str], 
-                               preference: str = 'closest_to_receiving') -> str:
-        """Select the best location from available locations"""
+                               preference: str = 'seasonal_optimized') -> str:
+        """Select the best location from available locations with seasonal optimization"""
         
         if not available_locations:
             return None
         
-        if preference == 'closest_to_receiving':
-            # Sort by distance from receiving point (0,0) and prefer lower floors
+        if preference == 'seasonal_optimized':
+            # ✨ SEASONAL OPTIMIZATION: Prioritize locations closest to packing point (0,11)
+            # Higher numbered slots (B07, P07, D14) are now physically closest to packing
+            def seasonal_priority(location_id):
+                slot_code = location_id.split('.')[0]  # Get B01 from B01.1
+                floor = int(location_id.split('.')[1])  # Get 1 from B01.1
+                
+                # Get slot coordinates
+                coords = self.get_slot_coordinates(slot_code)
+                if coords:
+                    x, y = coords['x'], coords['y']
+                    # Calculate distance from packing point (0,11) instead of receiving (0,0)
+                    distance = ((x - 0) ** 2 + (y - 11) ** 2) ** 0.5
+                    # Prefer lower floors (multiply floor by small factor)
+                    return distance + (floor * 0.1)
+                return float('inf')
+            
+            available_locations.sort(key=seasonal_priority)
+            return available_locations[0]
+        
+        elif preference == 'closest_to_receiving':
+            # Original logic for compatibility: Sort by distance from receiving point (0,0)
             def location_priority(location_id):
                 slot_code = location_id.split('.')[0]  # Get B01 from B01.1
                 floor = int(location_id.split('.')[1])  # Get 1 from B01.1
@@ -130,41 +152,42 @@ class LocationAllocationService:
             return available_locations[0]
     
     def get_slot_coordinates(self, slot_code: str) -> Dict[str, int]:
-        """Get map coordinates for a slot code (e.g., B01 -> {x: 1, y: 2})"""
+        """Get map coordinates for a slot code with SEASONAL OPTIMIZATION"""
         
-        # Map slot codes to coordinates based on your layout
+        # Map slot codes to coordinates based on seasonal storage optimization
+        # ✨ SEASONAL OPTIMIZATION: Higher numbers closer to packing point (0,11)
         slot_coordinates = {}
         
-        # B slots (Medium/Bin)
-        # B01-B07: column 1 (x=1), rows 2-8
+        # B slots (Medium/Bin) - SEASONAL OPTIMIZATION MAPPING
+        # B07 at y=8, B06 at y=7, B05 at y=6, B04 at y=5, B03 at y=4, B02 at y=3, B01 at y=2
         for i in range(1, 8):
-            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 1, 'y': 1 + i}
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 1, 'y': 2 + (i - 1)}  # B01=y2, B02=y3, ..., B07=y8
         
-        # B08-B14: column 2 (x=3), rows 2-8  
+        # B14 at y=8, B13 at y=7, B12 at y=6, B11 at y=5, B10 at y=4, B09 at y=3, B08 at y=2  
         for i in range(8, 15):
-            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 3, 'y': i - 6}
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 3, 'y': 2 + (i - 8)}  # B08=y2, B09=y3, ..., B14=y8
         
-        # B15-B21: column 3 (x=5), rows 2-8
+        # B21 at y=8, B20 at y=7, B19 at y=6, B18 at y=5, B17 at y=4, B16 at y=3, B15 at y=2
         for i in range(15, 22):
-            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 5, 'y': i - 13}
+            slot_coordinates[f"B{str(i).zfill(2)}"] = {'x': 5, 'y': 2 + (i - 15)}  # B15=y2, B16=y3, ..., B21=y8
         
-        # P slots (Small/Pellet)  
-        # P01-P07: column 1 (x=7), rows 2-8
+        # P slots (Small/Pellet) - SEASONAL OPTIMIZATION MAPPING
+        # P07 at y=8, P06 at y=7, P05 at y=6, P04 at y=5, P03 at y=4, P02 at y=3, P01 at y=2
         for i in range(1, 8):
-            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 7, 'y': 1 + i}
+            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 7, 'y': 2 + (i - 1)}  # P01=y2, P02=y3, ..., P07=y8
         
-        # P08-P14: column 2 (x=9), rows 2-8
+        # P14 at y=8, P13 at y=7, P12 at y=6, P11 at y=5, P10 at y=4, P09 at y=3, P08 at y=2
         for i in range(8, 15):
-            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 9, 'y': i - 6}
+            slot_coordinates[f"P{str(i).zfill(2)}"] = {'x': 9, 'y': 2 + (i - 8)}  # P08=y2, P09=y3, ..., P14=y8
         
-        # D slots (Large)
-        # D01-D07: row 1 (y=10), columns 3-9
+        # D slots (Large) - SEASONAL OPTIMIZATION MAPPING
+        # D07 at x=9, D06 at x=8, D05 at x=7, D04 at x=6, D03 at x=5, D02 at x=4, D01 at x=3
         for i in range(1, 8):
-            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': 2 + i, 'y': 10}
+            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': 3 + (i - 1), 'y': 10}  # D01=x3, D02=x4, ..., D07=x9
         
-        # D08-D14: row 2 (y=11), columns 3-9  
+        # D14 at x=9, D13 at x=8, D12 at x=7, D11 at x=6, D10 at x=5, D09 at x=4, D08 at x=3  
         for i in range(8, 15):
-            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': i - 5, 'y': 11}
+            slot_coordinates[f"D{str(i).zfill(2)}"] = {'x': 3 + (i - 8), 'y': 11}  # D08=x3, D09=x4, ..., D14=x9
         
         return slot_coordinates.get(slot_code, {'x': 0, 'y': 0})
     
@@ -176,7 +199,7 @@ class LocationAllocationService:
                                        db_collection_seasonal,
                                        db_collection_storage,
                                        db_collection_location_inventory,
-                                       preference: str = 'closest_to_receiving') -> Dict[str, Any]:
+                                       preference: str = 'seasonal_optimized') -> Dict[str, Any]:
         """Main method to allocate a specific location for an item using improved fallback logic"""
         
         try:

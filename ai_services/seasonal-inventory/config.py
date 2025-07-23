@@ -21,7 +21,12 @@ API_PREFIX = "/api/v1"
 API_TITLE = "Seasonal Inventory API"
 
 # Database Configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://judithfdo2002:kTCN07mlhHmtgrt0@cluster0.9wwflqj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# Import optimized Atlas configuration
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'config'))
+from atlas_optimization import get_database_url
+
+MONGODB_URL = get_database_url()
 DATABASE_NAME = os.getenv("DATABASE_NAME", "warehouse_management")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 

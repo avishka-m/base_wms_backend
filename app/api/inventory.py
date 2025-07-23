@@ -246,6 +246,19 @@ async def transfer_inventory(
     
     return result
 
+
+# Get current stock by category
+@router.get("/current-stock/{category}", response_model=Dict[str, Any])
+async def get_current_stock_by_category(
+    category: str,
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
+) -> Dict[str, Any]:
+    """
+    Get the total current stock for a given category.
+    """
+    total_stock = await InventoryService.get_current_stock_by_category(category)
+    return {"category": category, "current_stock": total_stock}
+
 # Check inventory anomalies
 @router.get("/anomalies", response_model=List[Dict[str, Any]])
 async def check_inventory_anomalies(

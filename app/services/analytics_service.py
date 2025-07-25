@@ -5,6 +5,18 @@ from datetime import datetime, timedelta
 
 from ..utils.database import get_collection
 
+from bson import ObjectId
+
+def convert_objectid(obj):
+    if isinstance(obj, list):
+        return [convert_objectid(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: convert_objectid(v) for k, v in obj.items()}
+    elif isinstance(obj, ObjectId):
+        return str(obj)
+    else:
+        return obj
+
 class AnalyticsService:
     """
     Service for providing analytics and reporting for the warehouse management system.
@@ -320,7 +332,7 @@ class AnalyticsService:
         except Exception as e:
             print(f"Error querying today's returns: {e}")
         
-        return {
+        return convert_objectid({
             "items_received": {
                 "total": items_received,
                 "today": today_received,
@@ -336,4 +348,4 @@ class AnalyticsService:
                 "items": low_stock_items,
                 "critical_threshold": 10  # Items with stock level <= 10
             }
-        }
+        })

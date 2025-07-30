@@ -267,10 +267,10 @@ class AnalyticsService:
         items_received = 0
         try:
             for receiving in receiving_collection.find(date_query):
-                if receiving.get("status") == "completed":
-                    items = receiving.get("items", [])
-                    for item in items:
-                        items_received += item.get("quantity", 0)
+                # if receiving.get("status") == "completed":
+                items = receiving.get("items", [])
+                for item in items:
+                    items_received += item.get("quantity", 0)
         except Exception as e:
             print(f"Error querying receiving collection: {e}")
             # Continue with 0 if collection doesn't exist

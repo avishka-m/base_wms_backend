@@ -76,7 +76,7 @@ async def get_dashboard_metrics(
 
 @router.get("/receiving-clerk", response_model=Dict[str, Any])
 async def get_receiving_clerk_metrics(
-    days: int = Query(30, description="Number of days to analyze"),
+    days: int = Query(100, description="Number of days to analyze"),
     current_user: Dict[str, Any] = Depends(has_role(["ReceivingClerk", "receiving_clerk", "Manager"]))
 ) -> Dict[str, Any]:
     """
